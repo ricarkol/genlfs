@@ -60,7 +60,6 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: lfs_cksum.c,v 1.30 2015/08/02 18:18:10 dholland Exp $");
 
 #include <sys/param.h>
 #ifdef _KERNEL
@@ -70,8 +69,10 @@ __KERNEL_RCSID(0, "$NetBSD: lfs_cksum.c,v 1.30 2015/08/02 18:18:10 dholland Exp 
 # include <stddef.h>
 #endif
 #include <sys/mount.h>
-#include <ufs/lfs/lfs.h>
-#include <ufs/lfs/lfs_extern.h>
+//#include <ufs/lfs/lfs.h>
+#include "lfs.h"
+//#include <ufs/lfs/lfs_extern.h>
+#include "lfs_extern.h"
 
 /*
  * Simple, general purpose, fast checksum.  Data must be short-aligned.
@@ -112,6 +113,18 @@ lfs_sb_cksum(struct lfs *fs)
 		ptr = &fs->lfs_dlfs_u.u_32;
 		size = (size_t)offsetof(struct dlfs64, dlfs_cksum);
 	}
+
+	return cksum(ptr, size);
+}
+
+u_int32_t
+lfs_sb_cksum32(struct dlfs *fs)
+{
+	void *ptr;
+	size_t size;
+
+	ptr = fs;
+	size = (size_t)offsetof(struct dlfs64, dlfs_cksum);
 
 	return cksum(ptr, size);
 }
