@@ -363,6 +363,9 @@ $55 = {dh_ino = 2, dh_reclen = 500, dh_type = 4 '\004', dh_namlen = 2 '\002'}
 	off += 4;
 	}
 
+	/* point to ifile inode */
+	lfs.dlfs_idaddr = 4;
+
 /*
 bwrite(blkno=64)
 
@@ -608,10 +611,10 @@ $8 = {.dlfs_magic = 459106, dlfs_version = 2, dlfs_size = 131072, dlfs_ssize = 1
 
 	assert(lfs.dlfs_curseg == 0);
 	assert(lfs.dlfs_nextseg == 128);
+	assert(lfs.dlfs_idaddr == 4);
 
 	lfs.dlfs_bfree = 117365;
 	lfs.dlfs_avail = -8;
-	lfs.dlfs_idaddr = 4;
 	lfs.dlfs_offset = 10;
 	lfs.dlfs_lastpseg = 10;
 	lfs.dlfs_dmeta = 2;
@@ -683,6 +686,9 @@ $99 = {0, 1}
 		off += sizeof(iinfo);
 	}
 	}
+
+	/* point to ifile inode */
+	lfs.dlfs_idaddr = 11;
 
 /*
 bwrite(blkno=176)
@@ -792,9 +798,10 @@ symlinklen = 60, dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 913
  52, dlfs_pad = '\000' <repeats 127 times>, dlfs_cksum = 34011}
 */
 
+	assert(lfs.dlfs_idaddr == 11);
+
 	lfs.dlfs_bfree = 117868;
 	lfs.dlfs_avail = 124393;
-	lfs.dlfs_idaddr = 11;
 	lfs.dlfs_offset = 14;
 	lfs.dlfs_lastpseg = 14;
 	lfs.dlfs_dmeta = 4;
