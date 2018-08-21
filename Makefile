@@ -1,2 +1,2 @@
 all:
-	gcc mkfs.c lfs_cksum.c -o mkfs
+	gcc -ggdb mkfs.c lfs_cksum.c -o mkfs

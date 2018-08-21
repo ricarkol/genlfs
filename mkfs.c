@@ -60,6 +60,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <err.h>
 
 #include "lfs.h"
 #include "lfs_accessors.h"
@@ -71,12 +72,31 @@
 
 u_int32_t lfs_sb_cksum32(struct dlfs *fs);
 
+#define SIZE	(1024 * 1024 * 1024)
+#define NSEGS	((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
+
+
+/*
+ * calculate the maximum file size allowed with the specified block shift.
+ */
+#define NPTR32 ((1 << DFL_LFSBLOCK_SHIFT) / sizeof(int32_t))
+#define MAXFILESIZE32 \
+	((ULFS_NDADDR + NPTR32 + NPTR32 * NPTR32 + NPTR32 * NPTR32 * NPTR32) \
+	<< DFL_LFSBLOCK_SHIFT)
+
+#define NPTR64 ((1 << DFL_LFSBLOCK_SHIFT) / sizeof(int64_t))
+#define MAXFILESIZE64 \
+	((ULFS_NDADDR + NPTR64 + NPTR64 * NPTR64 + NPTR64 * NPTR64 * NPTR64) \
+	<< DFL_LFSBLOCK_SHIFT)
+
+#define LOG2(X) ((unsigned) (8*sizeof (unsigned long long) - __builtin_clzll((X)) - 1))
+
 static const struct dlfs dlfs32_default = {
 		.dlfs_magic =		LFS_MAGIC,
 		.dlfs_version =		LFS_VERSION,
-		.dlfs_size =		0,
+		.dlfs_size =		SIZE/DFL_LFSBLOCK,
 		.dlfs_ssize =		DFL_LFSSEG,
-		.dlfs_dsize =		0,
+		.dlfs_dsize =		((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - DFL_LFSBLOCK*10) / DFL_LFSBLOCK,
 		.dlfs_bsize =		DFL_LFSBLOCK,
 		.dlfs_fsize =		DFL_LFSFRAG,
 		.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
@@ -87,23 +107,24 @@ static const struct dlfs dlfs32_default = {
 		.dlfs_uinodes =		0,
 		.dlfs_idaddr =		0,
 		.dlfs_ifile =		LFS_IFILE_INUM,
-		.dlfs_lastseg =		0,
-		.dlfs_nextseg =		0,
+		.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
+		/* Initial state curseg=0 and nextseg=SEGSIZE */
+		.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
 		.dlfs_curseg =		0,
 		.dlfs_offset =		0,
 		.dlfs_lastpseg =	0,
-		.dlfs_inopf =		0,
+		.dlfs_inopf =		512/sizeof(struct lfs32_dinode),
 		.dlfs_minfree =		MINFREE,
-		.dlfs_maxfilesize =	0,
-		.dlfs_fsbpseg =		0,
+		.dlfs_maxfilesize =	MAXFILESIZE32,
+		.dlfs_fsbpseg =		DFL_LFSSEG/DFL_LFSFRAG,
 		.dlfs_inopb =		DFL_LFSBLOCK/sizeof(struct lfs32_dinode),
 		.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE32),
 		.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
 		.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int32_t),
-		.dlfs_nseg =		0,
+		.dlfs_nseg =		NSEGS,
 		.dlfs_nspf =		0,
-		.dlfs_cleansz =		0,
-		.dlfs_segtabsz =	0,
+		.dlfs_cleansz =		1,
+		.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) / (DFL_LFSBLOCK/sizeof(SEGUSE)),
 		.dlfs_segmask =		DFL_LFSSEG_MASK,
 		.dlfs_segshift =	DFL_LFSSEG_SHIFT,
 		.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
@@ -112,16 +133,17 @@ static const struct dlfs dlfs32_default = {
 		.dlfs_bmask =		DFL_LFSBLOCK_MASK,
 		.dlfs_ffmask =		DFL_LFS_FFMASK,
 		.dlfs_fbmask =		DFL_LFS_FBMASK,
-		.dlfs_blktodb =		0,
+		.dlfs_blktodb =		LOG2(DFL_LFSBLOCK/512),
 		.dlfs_sushift =		0,
 		.dlfs_maxsymlinklen =	LFS32_MAXSYMLINKLEN,
 		.dlfs_sboffs =		{ 0 },
-		.dlfs_nclean =  	0,
+		.dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504},
+		.dlfs_nclean =  	NSEGS - 1,
 		.dlfs_fsmnt =   	{ 0 },
 		.dlfs_pflags =  	LFS_PF_CLEAN,
 		.dlfs_dmeta =		0,
-		.dlfs_minfreeseg =	0,
-		.dlfs_sumsize =		0,
+		.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
+		.dlfs_sumsize =		DFL_LFSFRAG,
 		.dlfs_serial =		0,
 		.dlfs_ibsize =		DFL_LFSFRAG,
 		.dlfs_s0addr =		0,
@@ -129,8 +151,8 @@ static const struct dlfs dlfs32_default = {
 		.dlfs_inodefmt =	LFS_44INODEFMT,
 		.dlfs_interleave =	0,
 		.dlfs_ident =		0,
-		.dlfs_fsbtodb =		0,
-		.dlfs_resvseg =		0,
+		.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
+		.dlfs_resvseg =		((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1,
 
 		.dlfs_pad = 		{ 0 },
 		.dlfs_cksum =		0
@@ -140,7 +162,7 @@ static const struct dlfs64 dlfs64_default = {
 		.dlfs_magic =		LFS64_MAGIC,
 		.dlfs_version =		LFS_VERSION,
 		.dlfs_size =		0,
-		.dlfs_dsize =		0,
+		.dlfs_dsize =		((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - DFL_LFSBLOCK*10) / DFL_LFSBLOCK,
 		.dlfs_ssize =		DFL_LFSSEG,
 		.dlfs_bsize =		DFL_LFSBLOCK,
 		.dlfs_fsize =		DFL_LFSFRAG,
@@ -152,39 +174,40 @@ static const struct dlfs64 dlfs64_default = {
 		.dlfs_idaddr =		0,
 		.dlfs_uinodes =		0,
 		.dlfs_unused_0 =	0,
-		.dlfs_lastseg =		0,
-		.dlfs_nextseg =		0,
+		.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
+		/* Initial state curseg=0 and nextseg=SEGSIZE */
+		.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
 		.dlfs_curseg =		0,
 		.dlfs_offset =		0,
 		.dlfs_lastpseg =	0,
-		.dlfs_inopf =		0,
+		.dlfs_inopf =		512/sizeof(struct lfs64_dinode),
 		.dlfs_minfree =		MINFREE,
-		.dlfs_maxfilesize =	0,
-		.dlfs_fsbpseg =		0,
+		.dlfs_maxfilesize =	MAXFILESIZE64,
+		.dlfs_fsbpseg =		DFL_LFSSEG/DFL_LFSFRAG,
 		.dlfs_inopb =		DFL_LFSBLOCK/sizeof(struct lfs64_dinode),
 		.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE64),
 		.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
 		.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int64_t),
-		.dlfs_nseg =		0,
+		.dlfs_nseg =		NSEGS,
 		.dlfs_nspf =		0,
-		.dlfs_cleansz =		0,
-		.dlfs_segtabsz =	0,
+		.dlfs_cleansz =		1,
+		.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) / (DFL_LFSBLOCK/sizeof(SEGUSE)),
 		.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
 		.dlfs_ffshift =		DFL_LFS_FFSHIFT,
 		.dlfs_fbshift =		DFL_LFS_FBSHIFT,
 		.dlfs_bmask =		DFL_LFSBLOCK_MASK,
 		.dlfs_ffmask =		DFL_LFS_FFMASK,
 		.dlfs_fbmask =		DFL_LFS_FBMASK,
-		.dlfs_blktodb =		0,
+		.dlfs_blktodb =		LOG2(DFL_LFSBLOCK/512),
 		.dlfs_sushift =		0,
 		.dlfs_sboffs =		{ 0 },
 		.dlfs_maxsymlinklen =	LFS64_MAXSYMLINKLEN,
-		.dlfs_nclean =  	0,
+		.dlfs_nclean =  	NSEGS - 1,
 		.dlfs_fsmnt =   	{ 0 },
 		.dlfs_pflags =  	LFS_PF_CLEAN,
 		.dlfs_dmeta =		0,
-		.dlfs_minfreeseg =	0,
-		.dlfs_sumsize =		0,
+		.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
+		.dlfs_sumsize =		DFL_LFSFRAG,
 		.dlfs_ibsize =		DFL_LFSFRAG,
 		.dlfs_inodefmt =	LFS_44INODEFMT,
 		.dlfs_serial =		0,
@@ -192,27 +215,27 @@ static const struct dlfs64 dlfs64_default = {
 		.dlfs_tstamp =  	0,
 		.dlfs_interleave =	0,
 		.dlfs_ident =		0,
-		.dlfs_fsbtodb =		0,
-		.dlfs_resvseg =		0,
+		.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
+		.dlfs_resvseg =		((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1,
 
 		.dlfs_pad = 		{ 0 },
 		.dlfs_cksum =		0
 };
 
-#define BSIZE  8192	/* file system block size */
-#define SSIZE  1048576	/* number of bytes per segment (v2) */
-#define NSEGS  1023	/* number of segments */
-
 #define SECTOR_TO_BYTES(_S) (512 * _S)
-#define BLOCK_TO_BYTES(_S) (BSIZE * _S)
+#define BLOCK_TO_BYTES(_S) (DFL_LFSBLOCK * _S)
 
-int main()
+int main(int argc, char **argv)
 {
 	struct dlfs lfs = dlfs32_default;
 	int fd;
 	off_t off;
 
-	fd = open("test.lfs", O_CREAT | O_RDWR, DEFFILEMODE);
+	if (argc != 2) {
+		errx(1, "Usage: %s <file/device>", argv[0]);
+	}
+
+	fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fd != 0);
 
 /*
@@ -544,7 +567,7 @@ $155 = {
 	off += sizeof(ifile);
 	/* inode 3, etc */
 	int i;
-	for (i = 3; i < BSIZE / sizeof(ifile); i++) {
+	for (i = 3; i < DFL_LFSBLOCK / sizeof(ifile); i++) {
 		ifile.if_version = 1;
 		ifile.if_daddr = 0;
 		ifile.if_nextfree = i + 1;
@@ -563,68 +586,40 @@ $8 = {.dlfs_magic = 459106, dlfs_version = 2, dlfs_size = 131072, dlfs_ssize = 1
  = 2048, dlfs_nseg = 1023, dlfs_nspf = 0, dlfs_cleansz = 1, dlfs_segtabsz = 3, dlfs_segmask = 0, dlfs_segshift = 0, dlfs_bshift = 13, dlfs_ffshift = 13, dlfs_fbshift = 0, dlfs_bmask = 8191, dlfs_ffmask = 8191, dlfs_fbmask = 0, dlfs_blktodb = 4, dlfs_sushift = 0, dlfs_maxsymlinklen = 60, dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504}, dlfs_nclean = 1022, dlfs_fsmnt = '\000' <repeats 89 times>, dlfs_pflags = 1, dlfs_dmeta = 2, dlfs_minfreeseg = 102, dlfs_sumsize = 8192, dlfs_serial = 1, dlfs_ibsize = 8192, dlfs_s0addr = 0, dlfs_tstamp = 0, dlfs_inodefmt = 0, dlfs_interleave = 0, dlfs_ident = 809671122, dlfs_fsbtodb = 4, dlfs_resvseg = 52, dlfs_pad = '\000' <repeats 127 times>, dlfs_cksum = 25346}
 */
 	{
-	struct dlfs _lfs = {
-		.dlfs_magic = 459106,
-		.dlfs_version = 2,
-		.dlfs_size = 131072,
-		.dlfs_ssize = 1048576,
-		.dlfs_dsize = 117878,
-		.dlfs_bsize = 8192,
-		.dlfs_fsize = 8192,
-		.dlfs_frag = 1,
-		.dlfs_freehd = 3,
-		.dlfs_bfree = 117365,
-		.dlfs_nfiles = 0,
-		.dlfs_avail = -8,
-		.dlfs_uinodes = 0,
-		.dlfs_idaddr = 4,
-		.dlfs_ifile = 1,
-		.dlfs_lastseg = 130816,
-		.dlfs_nextseg = 128,
-		.dlfs_curseg = 0,
-		.dlfs_offset = 10,
-		.dlfs_lastpseg = 10,
-		.dlfs_inopf = 4,
-		.dlfs_minfree = 10,
-		.dlfs_maxfilesize = 70403120791552,
-		.dlfs_fsbpseg = 128,
-		.dlfs_inopb = 64,
-		.dlfs_ifpb = 409,
-		.dlfs_sepb = 341,
-		.dlfs_nindir = 2048,
-		.dlfs_nseg = 1023,
-		.dlfs_nspf = 0,
-		.dlfs_cleansz = 1,
-		.dlfs_segtabsz = 3,
-		.dlfs_segmask = 0,
-		.dlfs_segshift = 0,
-		.dlfs_bshift = 13,
-		.dlfs_ffshift = 13,
-		.dlfs_fbshift = 0,
-		.dlfs_bmask = 8191,
-		.dlfs_ffmask = 8191,
-		.dlfs_fbmask = 0,
-		.dlfs_blktodb = 4,
-		.dlfs_sushift = 0,
-		.dlfs_maxsymlinklen = 60,
-		.dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504},
-		.dlfs_nclean = 1022,
-		.dlfs_pflags = 1,
-		.dlfs_dmeta = 2,
-		.dlfs_minfreeseg = 102,
-		.dlfs_sumsize = 8192,
-		.dlfs_serial = 1,
-		.dlfs_ibsize = 8192,
-		.dlfs_s0addr = 0,
-		.dlfs_tstamp = 0,
-		.dlfs_inodefmt = 0,
-		.dlfs_interleave = 0,
-		.dlfs_ident = 809671122,
-		.dlfs_fsbtodb = 4,
-		.dlfs_resvseg = 52,
-	};
-	_lfs.dlfs_cksum = lfs_sb_cksum32(&_lfs);
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BSIZE) == sizeof(_lfs));
+	assert(lfs.dlfs_nseg == 1023);
+	assert(lfs.dlfs_size == 131072);
+	assert(lfs.dlfs_dsize == 117878);
+	assert(lfs.dlfs_lastseg == 130816);
+	assert(lfs.dlfs_inopf == 4);
+	assert(lfs.dlfs_maxfilesize == 70403120791552);
+	assert(lfs.dlfs_fsbpseg == 128);
+	assert(lfs.dlfs_minfreeseg == 102);
+	assert(lfs.dlfs_fsbtodb == 4);
+	assert(lfs.dlfs_resvseg == 52);
+	assert(lfs.dlfs_cleansz == 1);
+	assert(sizeof(CLEANERINFO32) <= DFL_LFSBLOCK);
+	assert(sizeof(CLEANERINFO64) <= DFL_LFSBLOCK);
+	assert(lfs.dlfs_segtabsz == 3);
+	assert(lfs.dlfs_blktodb == 4);
+	assert(lfs.dlfs_sumsize == 8192);
+	assert(lfs.dlfs_pflags == 1);
+	assert(lfs.dlfs_pflags == LFS_PF_CLEAN);
+	assert(lfs.dlfs_nclean = 1022);
+
+	assert(lfs.dlfs_curseg == 0);
+	assert(lfs.dlfs_nextseg == 128);
+
+	lfs.dlfs_bfree = 117365;
+	lfs.dlfs_avail = -8;
+	lfs.dlfs_idaddr = 4;
+	lfs.dlfs_offset = 10;
+	lfs.dlfs_lastpseg = 10;
+	lfs.dlfs_dmeta = 2;
+
+	lfs.dlfs_serial++;
+
+	lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
+	assert(pwrite(fd, &lfs, sizeof(lfs), DFL_LFSBLOCK) == sizeof(lfs));
 
 /*
 bwrite(blkno=208896)
@@ -632,8 +627,8 @@ bwrite(blkno=208896)
 SUPERBLOCK:
 */
 		
-	_lfs.dlfs_cksum = lfs_sb_cksum32(&_lfs);
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), SECTOR_TO_BYTES(208896)) == sizeof(_lfs));
+	lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
+	assert(pwrite(fd, &lfs, sizeof(lfs), SECTOR_TO_BYTES(208896)) == sizeof(lfs));
 	}
 
 /*
@@ -797,77 +792,25 @@ symlinklen = 60, dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 913
  52, dlfs_pad = '\000' <repeats 127 times>, dlfs_cksum = 34011}
 */
 
-	struct dlfs _lfs = {
-		.dlfs_magic = 459106,
-		.dlfs_version = 2,
-		.dlfs_size = 131072,
-		.dlfs_ssize = 1048576,
-		.dlfs_dsize = 117878,
-		.dlfs_bsize = 8192,
-		.dlfs_fsize = 8192,
-		.dlfs_frag = 1,
-		.dlfs_freehd = 3,
-		.dlfs_bfree = 117868,
-		.dlfs_nfiles = 0,
-		.dlfs_avail = 124393,
-		.dlfs_uinodes = 0,
-		.dlfs_idaddr = 11,
-		.dlfs_ifile = 1,
-		.dlfs_lastseg = 130816,
-		.dlfs_nextseg = 128,
-		.dlfs_curseg = 0,
-		.dlfs_offset = 14,
-		.dlfs_lastpseg = 14,
-		.dlfs_inopf = 4,
-		.dlfs_minfree = 10,
-		.dlfs_maxfilesize = 70403120791552,
-		.dlfs_fsbpseg = 128,
-		.dlfs_inopb = 64,
-		.dlfs_ifpb = 409,
-		.dlfs_sepb = 341,
-		.dlfs_nindir = 2048,
-		.dlfs_nseg = 1023,
-		.dlfs_nspf = 0,
-		.dlfs_cleansz = 1,
-		.dlfs_segtabsz = 3,
-		.dlfs_segmask = 0,
-		.dlfs_segshift = 0,
-		.dlfs_bshift = 13,
-		.dlfs_ffshift = 13,
-		.dlfs_fbshift = 0,
-		.dlfs_bmask = 8191,
-		.dlfs_ffmask = 8191,
-		.dlfs_fbmask = 0,
-		.dlfs_blktodb = 4,
-		.dlfs_sushift = 0,
-		.dlfs_maxsymlinklen = 60,
-		.dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504},
-		.dlfs_nclean = 1022,
-		.dlfs_pflags = 1,
-		.dlfs_dmeta = 4,
-		.dlfs_minfreeseg = 102,
-		.dlfs_sumsize = 8192,
-		.dlfs_serial = 2,
-		.dlfs_ibsize = 8192,
-		.dlfs_s0addr = 0,
-		.dlfs_tstamp = 0,
-		.dlfs_inodefmt = 0,
-		.dlfs_interleave = 0,
-		.dlfs_ident = 516731769,
-		.dlfs_fsbtodb = 4,
-		.dlfs_resvseg =  52
-	};
-	_lfs.dlfs_cksum = lfs_sb_cksum32(&_lfs);
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BSIZE) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(13056)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(26112)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(39168)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(52224)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(65280)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(78336)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(91392)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(104448)) == sizeof(_lfs));
-	assert(pwrite(fd, &_lfs, sizeof(_lfs), BLOCK_TO_BYTES(117504)) == sizeof(_lfs));
+	lfs.dlfs_bfree = 117868;
+	lfs.dlfs_avail = 124393;
+	lfs.dlfs_idaddr = 11;
+	lfs.dlfs_offset = 14;
+	lfs.dlfs_lastpseg = 14;
+	lfs.dlfs_dmeta = 4;
 
+	lfs.dlfs_serial++;
+
+	lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
+	assert(pwrite(fd, &lfs, sizeof(lfs), DFL_LFSBLOCK) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(13056)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(26112)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(39168)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(52224)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(65280)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(78336)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(91392)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(104448)) == sizeof(lfs));
+	assert(pwrite(fd, &lfs, sizeof(lfs), BLOCK_TO_BYTES(117504)) == sizeof(lfs));
 	return 0;
 }

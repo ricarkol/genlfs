@@ -64,11 +64,11 @@
 #define	DFL_LFSBLOCK_SHIFT	13
 #define	DFL_LFSBLOCK_MASK	0x1FFF
 
-#define DFL_LFSFRAG		1024
-#define DFL_LFS_FFMASK		0x3FF
-#define DFL_LFS_FFSHIFT		10
-#define DFL_LFS_FBMASK		0x7
-#define DFL_LFS_FBSHIFT		3
+#define DFL_LFSFRAG		8192
+#define DFL_LFS_FFMASK		0x1FFF
+#define DFL_LFS_FFSHIFT		13
+#define DFL_LFS_FBMASK		0
+#define DFL_LFS_FBSHIFT		0
 
 #define SMALL_FSSIZE		65536 /* sectors */
 #define SMALL_LFSSEG		32768
