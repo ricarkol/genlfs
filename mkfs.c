@@ -123,7 +123,8 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_lastpseg =	2,
 	.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
 	.dlfs_curseg =		0,
-	.dlfs_bfree =		0, /* ??? */
+	.dlfs_bfree =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
+			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK,
 	.dlfs_nfiles =		0,
 	/* 1 for the start padding (block 0)  */
 	.dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
@@ -250,6 +251,27 @@ static const struct dlfs64 dlfs64_default = {
 };
 
 
+int write_superblock(int fd, struct dlfs *lfs)
+{
+	int i;
+
+	lfs->dlfs_serial++;
+	lfs->dlfs_cksum = lfs_sb_cksum32(lfs);
+
+	for (i = 0; i < NSUPERBLOCKS; i++)
+		assert(pwrite(fd, lfs, sizeof(*lfs),
+			FSBLOCK_TO_BYTES(lfs->dlfs_sboffs[i])) == sizeof(*lfs));
+	return 0;
+}
+
+void advance_log(struct dlfs *lfs)
+{
+	lfs->dlfs_offset++;
+	lfs->dlfs_lastpseg++;
+	lfs->dlfs_avail--;
+	lfs->dlfs_bfree--;
+}
+
 int main(int argc, char **argv)
 {
 	struct dlfs lfs = dlfs32_default;
@@ -348,11 +370,7 @@ $31 = {0, 1, 2, 3, 4}
 	}
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
-
+	advance_log(&lfs);
 /*
 Data for root directory:
 
@@ -399,10 +417,7 @@ $55 = {dh_ino = 2, dh_reclen = 500, dh_type = 4 '\004', dh_namlen = 2 '\002'}
 	off += 4;
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=64)
 
@@ -475,10 +490,7 @@ $61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime 
 	lfs.dlfs_idaddr = lfs.dlfs_offset;
 	assert(lfs.dlfs_idaddr == 4);
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=80)
 
@@ -511,10 +523,7 @@ $134 = {clean = 1022, dirty = 1, bfree = 117367, avail = -6, free_head = 3, free
 		.su_lastmod = 0
 	};
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=96)
 
@@ -546,10 +555,7 @@ $138 = 341
 	}
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=112)
 
@@ -568,10 +574,7 @@ $137 = {su_nbytes = 0, su_olastmod = 0, su_nsums = 0, su_ninos = 0, su_flags = 1
 	}
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=128)
 
@@ -590,10 +593,7 @@ $145 = {su_nbytes = 0, su_olastmod = 0, su_nsums = 0, su_ninos = 0, su_flags = 1
 	}
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=144)
 
@@ -646,10 +646,7 @@ $155 = {
 	}
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=16)
 
@@ -690,10 +687,9 @@ $8 = {.dlfs_magic = 459106, dlfs_version = 2, dlfs_size = 131072, dlfs_ssize = 1
 	//lfs.dlfs_bfree = 117365;
 	//lfs.dlfs_avail = -8;
 
-	lfs.dlfs_serial++;
-
-	lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
-	assert(pwrite(fd, &lfs, sizeof(lfs), DFL_LFSBLOCK) == sizeof(lfs));
+	//lfs.dlfs_serial++;
+	//lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
+	//assert(pwrite(fd, &lfs, sizeof(lfs), DFL_LFSBLOCK) == sizeof(lfs));
 
 /*
 bwrite(blkno=208896)
@@ -701,8 +697,10 @@ bwrite(blkno=208896)
 SUPERBLOCK:
 */
 		
-	lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
-	assert(pwrite(fd, &lfs, sizeof(lfs), SECTOR_TO_BYTES(208896)) == sizeof(lfs));
+	//lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
+	//assert(pwrite(fd, &lfs, sizeof(lfs), SECTOR_TO_BYTES(208896)) == sizeof(lfs));
+
+	write_superblock(fd, &lfs);
 	}
 
 /*
@@ -761,10 +759,7 @@ $99 = {0, 1}
 	}
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=176)
 
@@ -806,10 +801,7 @@ $100 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime
 	lfs.dlfs_idaddr = lfs.dlfs_offset;
 	assert(lfs.dlfs_idaddr == 11);
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=192)
 
@@ -837,10 +829,7 @@ $125 = {clean = 1022, dirty = 1, bfree = 117870, avail = 124397, free_head = 3, 
 	assert(pwrite(fd, &cleanerinfo, sizeof(cleanerinfo), off) == sizeof(cleanerinfo));
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=208)
 
@@ -872,10 +861,7 @@ $138 = 341
 	}
 	}
 
-	/* Advance the log */
-	lfs.dlfs_offset++;
-	lfs.dlfs_lastpseg++;
-	lfs.dlfs_avail--;
+	advance_log(&lfs);
 /*
 bwrite(blkno=16)
 
@@ -897,21 +883,8 @@ symlinklen = 60, dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 913
 	assert(lfs.dlfs_lastpseg == 14);
 	assert(lfs.dlfs_dmeta == 4);
 	assert(lfs.dlfs_avail == 124393);
+	//assert(lfs.dlfs_bfree == 117868);
 
-	//lfs.dlfs_bfree = 117868;
-
-	lfs.dlfs_serial++;
-
-	lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
-	assert(pwrite(fd, &lfs, sizeof(lfs), DFL_LFSBLOCK) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(13056)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(26112)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(39168)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(52224)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(65280)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(78336)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(91392)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(104448)) == sizeof(lfs));
-	assert(pwrite(fd, &lfs, sizeof(lfs), FSBLOCK_TO_BYTES(117504)) == sizeof(lfs));
+	write_superblock(fd, &lfs);
 	return 0;
 }
