@@ -275,8 +275,10 @@ lags = 8, ss_pad = "\000", ss_reclino = 0, ss_serial = 1, ss_create = 0}
 	};
 	assert(pwrite(fd, &lfs, sizeof(segsum), off) == sizeof(segsum));
 	off += sizeof(segsum);
-	}
 
+	int ninos = (segsum.ss_ninos + lfs.dlfs_inopb - 1) / lfs.dlfs_inopb;
+	lfs.dlfs_dmeta += (lfs.dlfs_sumsize + ninos * lfs.dlfs_ibsize) / DFL_LFSBLOCK;
+	}
 /*
 FINFO 1:
 
@@ -657,10 +659,10 @@ $8 = {.dlfs_magic = 459106, dlfs_version = 2, dlfs_size = 131072, dlfs_ssize = 1
 	assert(lfs.dlfs_idaddr == 4);
 	assert(lfs.dlfs_offset == 10);
 	assert(lfs.dlfs_lastpseg == 10);
+	assert(lfs.dlfs_dmeta == 2);
 
 	lfs.dlfs_bfree = 117365;
 	lfs.dlfs_avail = -8;
-	lfs.dlfs_dmeta = 2;
 
 	lfs.dlfs_serial++;
 
@@ -704,8 +706,10 @@ $97 = {ss_sumsum = 4092, ss_datasum = 17279, ss_magic = 398689, ss_next = 128, s
 	};
 	assert(pwrite(fd, &lfs, sizeof(segsum), SECTOR_TO_BYTES(32)) == sizeof(segsum));
 	off += sizeof(segsum);
-	}
 
+	int ninos = (segsum.ss_ninos + lfs.dlfs_inopb - 1) / lfs.dlfs_inopb;
+	lfs.dlfs_dmeta += (lfs.dlfs_sumsize + ninos * lfs.dlfs_ibsize) / DFL_LFSBLOCK;
+	}
 /*
 FINFO 1:
 
@@ -861,10 +865,10 @@ symlinklen = 60, dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 913
 	assert(lfs.dlfs_idaddr == 11);
 	assert(lfs.dlfs_offset == 14);
 	assert(lfs.dlfs_lastpseg == 14);
+	assert(lfs.dlfs_dmeta == 4);
 
 	lfs.dlfs_bfree = 117868;
 	lfs.dlfs_avail = 124393;
-	lfs.dlfs_dmeta = 4;
 
 	lfs.dlfs_serial++;
 
