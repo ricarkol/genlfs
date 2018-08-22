@@ -76,7 +76,8 @@ u_int32_t lfs_sb_cksum32(struct dlfs *fs);
 #define SIZE		(1024 * 1024 * 1024)
 #define NSUPERBLOCKS	10
 
-#define NSEGS	((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
+#define NSEGS		((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
+#define RESVSEG		(((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1)
 
 /*
  * calculate the maximum file size allowed with the specified block shift.
@@ -93,139 +94,161 @@ u_int32_t lfs_sb_cksum32(struct dlfs *fs);
 
 #define LOG2(X) ((unsigned) (8*sizeof (unsigned long long) - __builtin_clzll((X)) - 1))
 
-static const struct dlfs dlfs32_default = {
-		.dlfs_magic =		LFS_MAGIC,
-		.dlfs_version =		LFS_VERSION,
-		.dlfs_size =		SIZE/DFL_LFSBLOCK,
-		.dlfs_ssize =		DFL_LFSSEG,
-		.dlfs_dsize =		((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - DFL_LFSBLOCK*NSUPERBLOCKS) / DFL_LFSBLOCK,
-		.dlfs_bsize =		DFL_LFSBLOCK,
-		.dlfs_fsize =		DFL_LFSFRAG,
-		.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
-		.dlfs_freehd =		HIGHEST_USED_INO + 1,
-		.dlfs_bfree =		0,
-		.dlfs_nfiles =		0,
-		.dlfs_avail =		0,
-		.dlfs_uinodes =		0,
-		.dlfs_idaddr =		0,
-		.dlfs_ifile =		LFS_IFILE_INUM,
-		.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
-		/* Initial state curseg=0 and nextseg=SEGSIZE */
-		.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
-		.dlfs_curseg =		0,
-		.dlfs_offset =		0,
-		.dlfs_lastpseg =	0,
-		.dlfs_inopf =		512/sizeof(struct lfs32_dinode),
-		.dlfs_minfree =		MINFREE,
-		.dlfs_maxfilesize =	MAXFILESIZE32,
-		.dlfs_fsbpseg =		DFL_LFSSEG/DFL_LFSFRAG,
-		.dlfs_inopb =		DFL_LFSBLOCK/sizeof(struct lfs32_dinode),
-		.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE32),
-		.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
-		.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int32_t),
-		.dlfs_nseg =		NSEGS,
-		.dlfs_nspf =		0,
-		.dlfs_cleansz =		1,
-		.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) / (DFL_LFSBLOCK/sizeof(SEGUSE)),
-		.dlfs_segmask =		DFL_LFSSEG_MASK,
-		.dlfs_segshift =	DFL_LFSSEG_SHIFT,
-		.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
-		.dlfs_ffshift =		DFL_LFS_FFSHIFT,
-		.dlfs_fbshift =		DFL_LFS_FBSHIFT,
-		.dlfs_bmask =		DFL_LFSBLOCK_MASK,
-		.dlfs_ffmask =		DFL_LFS_FFMASK,
-		.dlfs_fbmask =		DFL_LFS_FBMASK,
-		.dlfs_blktodb =		LOG2(DFL_LFSBLOCK/512),
-		.dlfs_sushift =		0,
-		.dlfs_maxsymlinklen =	LFS32_MAXSYMLINKLEN,
-		.dlfs_sboffs =		{ 0 },
-		.dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504},
-		.dlfs_nclean =  	NSEGS - 1,
-		.dlfs_fsmnt =   	{ 0 },
-		.dlfs_pflags =  	LFS_PF_CLEAN,
-		.dlfs_dmeta =		0,
-		.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
-		.dlfs_sumsize =		DFL_LFSFRAG,
-		.dlfs_serial =		0,
-		.dlfs_ibsize =		DFL_LFSFRAG,
-		.dlfs_s0addr =		0,
-		.dlfs_tstamp =  	0,
-		.dlfs_inodefmt =	LFS_44INODEFMT,
-		.dlfs_interleave =	0,
-		.dlfs_ident =		0,
-		.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
-		.dlfs_resvseg =		((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1,
+#define SECTOR_TO_BYTES(_S) (512 * (_S))
+#define FSBLOCK_TO_BYTES(_S) (DFL_LFSBLOCK * (_S))
+#define SEGS_TO_FSBLOCKS(_S) (((_S) * DFL_LFSSEG) / DFL_LFSBLOCK)
 
-		.dlfs_pad = 		{ 0 },
-		.dlfs_cksum =		0
+static const struct dlfs dlfs32_default = {
+	.dlfs_magic =		LFS_MAGIC,
+	.dlfs_version =		LFS_VERSION,
+	.dlfs_size =		SIZE/DFL_LFSBLOCK,
+	.dlfs_ssize =		DFL_LFSSEG,
+	.dlfs_dsize =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
+			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK,
+	.dlfs_bsize =		DFL_LFSBLOCK,
+	.dlfs_fsize =		DFL_LFSFRAG,
+	.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
+	.dlfs_freehd =		HIGHEST_USED_INO + 1,
+	.dlfs_uinodes =		0,
+	.dlfs_idaddr =		0,
+	.dlfs_ifile =		LFS_IFILE_INUM,
+	.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
+
+	/*
+	 * Initial state:
+	 * We start at block 2, as block 0 is just padding and block 1
+	 * is the superblock.
+	 */
+	.dlfs_offset =		2,
+	.dlfs_lastpseg =	2,
+	.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
+	.dlfs_curseg =		0,
+	.dlfs_bfree =		0, /* ??? */
+	.dlfs_nfiles =		0,
+	/* 1 for the start padding (block 0)  */
+	.dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
+				NSUPERBLOCKS - 1,
+
+	.dlfs_inopf =		512/sizeof(struct lfs32_dinode),
+	.dlfs_minfree =		MINFREE,
+	.dlfs_maxfilesize =	MAXFILESIZE32,
+	.dlfs_fsbpseg =		DFL_LFSSEG/DFL_LFSFRAG,
+	.dlfs_inopb =		DFL_LFSBLOCK/sizeof(struct lfs32_dinode),
+	.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE32),
+	.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
+	.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int32_t),
+	.dlfs_nseg =		NSEGS,
+	.dlfs_nspf =		0,
+	.dlfs_cleansz =		1,
+	.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
+				(DFL_LFSBLOCK/sizeof(SEGUSE)),
+	.dlfs_segmask =		DFL_LFSSEG_MASK,
+	.dlfs_segshift =	DFL_LFSSEG_SHIFT,
+	.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
+	.dlfs_ffshift =		DFL_LFS_FFSHIFT,
+	.dlfs_fbshift =		DFL_LFS_FBSHIFT,
+	.dlfs_bmask =		DFL_LFSBLOCK_MASK,
+	.dlfs_ffmask =		DFL_LFS_FFMASK,
+	.dlfs_fbmask =		DFL_LFS_FBMASK,
+	.dlfs_blktodb =		LOG2(DFL_LFSBLOCK/512),
+	.dlfs_sushift =		0,
+	.dlfs_maxsymlinklen =	LFS32_MAXSYMLINKLEN,
+	.dlfs_sboffs =		{ 0 },
+	.dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504},
+	.dlfs_nclean =  	NSEGS - 1,
+	.dlfs_fsmnt =   	{ 0 },
+	.dlfs_pflags =  	LFS_PF_CLEAN,
+	.dlfs_dmeta =		0,
+	.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
+	.dlfs_sumsize =		DFL_LFSFRAG,
+	.dlfs_serial =		0,
+	.dlfs_ibsize =		DFL_LFSFRAG,
+	.dlfs_s0addr =		0,
+	.dlfs_tstamp =  	0,
+	.dlfs_inodefmt =	LFS_44INODEFMT,
+	.dlfs_interleave =	0,
+	.dlfs_ident =		0,
+	.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
+	.dlfs_resvseg =		RESVSEG,
+
+	.dlfs_pad = 		{ 0 },
+	.dlfs_cksum =		0
 };
 
 static const struct dlfs64 dlfs64_default = {
-		.dlfs_magic =		LFS64_MAGIC,
-		.dlfs_version =		LFS_VERSION,
-		.dlfs_size =		0,
-		.dlfs_dsize =		((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - DFL_LFSBLOCK*10) / DFL_LFSBLOCK,
-		.dlfs_ssize =		DFL_LFSSEG,
-		.dlfs_bsize =		DFL_LFSBLOCK,
-		.dlfs_fsize =		DFL_LFSFRAG,
-		.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
-		.dlfs_freehd =		HIGHEST_USED_INO + 1,
-		.dlfs_nfiles =		0,
-		.dlfs_bfree =		0,
-		.dlfs_avail =		0,
-		.dlfs_idaddr =		0,
-		.dlfs_uinodes =		0,
-		.dlfs_unused_0 =	0,
-		.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
-		/* Initial state curseg=0 and nextseg=SEGSIZE */
-		.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
-		.dlfs_curseg =		0,
-		.dlfs_offset =		0,
-		.dlfs_lastpseg =	0,
-		.dlfs_inopf =		512/sizeof(struct lfs64_dinode),
-		.dlfs_minfree =		MINFREE,
-		.dlfs_maxfilesize =	MAXFILESIZE64,
-		.dlfs_fsbpseg =		DFL_LFSSEG/DFL_LFSFRAG,
-		.dlfs_inopb =		DFL_LFSBLOCK/sizeof(struct lfs64_dinode),
-		.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE64),
-		.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
-		.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int64_t),
-		.dlfs_nseg =		NSEGS,
-		.dlfs_nspf =		0,
-		.dlfs_cleansz =		1,
-		.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) / (DFL_LFSBLOCK/sizeof(SEGUSE)),
-		.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
-		.dlfs_ffshift =		DFL_LFS_FFSHIFT,
-		.dlfs_fbshift =		DFL_LFS_FBSHIFT,
-		.dlfs_bmask =		DFL_LFSBLOCK_MASK,
-		.dlfs_ffmask =		DFL_LFS_FFMASK,
-		.dlfs_fbmask =		DFL_LFS_FBMASK,
-		.dlfs_blktodb =		LOG2(DFL_LFSBLOCK/512),
-		.dlfs_sushift =		0,
-		.dlfs_sboffs =		{ 0 },
-		.dlfs_maxsymlinklen =	LFS64_MAXSYMLINKLEN,
-		.dlfs_nclean =  	NSEGS - 1,
-		.dlfs_fsmnt =   	{ 0 },
-		.dlfs_pflags =  	LFS_PF_CLEAN,
-		.dlfs_dmeta =		0,
-		.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
-		.dlfs_sumsize =		DFL_LFSFRAG,
-		.dlfs_ibsize =		DFL_LFSFRAG,
-		.dlfs_inodefmt =	LFS_44INODEFMT,
-		.dlfs_serial =		0,
-		.dlfs_s0addr =		0,
-		.dlfs_tstamp =  	0,
-		.dlfs_interleave =	0,
-		.dlfs_ident =		0,
-		.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
-		.dlfs_resvseg =		((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1,
+	.dlfs_magic =		LFS64_MAGIC,
+	.dlfs_version =		LFS_VERSION,
+	.dlfs_size =		0,
+	.dlfs_dsize =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG -
+			DFL_LFSBLOCK*10) / DFL_LFSBLOCK,
+	.dlfs_ssize =		DFL_LFSSEG,
+	.dlfs_bsize =		DFL_LFSBLOCK,
+	.dlfs_fsize =		DFL_LFSFRAG,
+	.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
+	.dlfs_freehd =		HIGHEST_USED_INO + 1,
+	.dlfs_idaddr =		0,
+	.dlfs_uinodes =		0,
+	.dlfs_unused_0 =	0,
+	.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
 
-		.dlfs_pad = 		{ 0 },
-		.dlfs_cksum =		0
+	/*
+	 * Initial state:
+	 * We start at block 2, as block 0 is just padding and block 1
+	 * is the superblock.
+	 */
+	.dlfs_offset =		2,
+	.dlfs_lastpseg =	2,
+	.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
+	.dlfs_curseg =		0,
+	.dlfs_bfree =		0, /* ??? */
+	.dlfs_nfiles =		0,
+	/* 1 for the start padding (block 0)  */
+	.dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
+				NSUPERBLOCKS - 1,
+
+	.dlfs_inopf =		512/sizeof(struct lfs64_dinode),
+	.dlfs_minfree =		MINFREE,
+	.dlfs_maxfilesize =	MAXFILESIZE64,
+	.dlfs_fsbpseg =		DFL_LFSSEG/DFL_LFSFRAG,
+	.dlfs_inopb =		DFL_LFSBLOCK/sizeof(struct lfs64_dinode),
+	.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE64),
+	.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
+	.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int64_t),
+	.dlfs_nseg =		NSEGS,
+	.dlfs_nspf =		0,
+	.dlfs_cleansz =		1,
+	.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
+				(DFL_LFSBLOCK/sizeof(SEGUSE)),
+	.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
+	.dlfs_ffshift =		DFL_LFS_FFSHIFT,
+	.dlfs_fbshift =		DFL_LFS_FBSHIFT,
+	.dlfs_bmask =		DFL_LFSBLOCK_MASK,
+	.dlfs_ffmask =		DFL_LFS_FFMASK,
+	.dlfs_fbmask =		DFL_LFS_FBMASK,
+	.dlfs_blktodb =		LOG2(DFL_LFSBLOCK/512),
+	.dlfs_sushift =		0,
+	.dlfs_sboffs =		{ 0 },
+	.dlfs_maxsymlinklen =	LFS64_MAXSYMLINKLEN,
+	.dlfs_nclean =  	NSEGS - 1,
+	.dlfs_fsmnt =   	{ 0 },
+	.dlfs_pflags =  	LFS_PF_CLEAN,
+	.dlfs_dmeta =		0,
+	.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
+	.dlfs_sumsize =		DFL_LFSFRAG,
+	.dlfs_ibsize =		DFL_LFSFRAG,
+	.dlfs_inodefmt =	LFS_44INODEFMT,
+	.dlfs_serial =		0,
+	.dlfs_s0addr =		0,
+	.dlfs_tstamp =  	0,
+	.dlfs_interleave =	0,
+	.dlfs_ident =		0,
+	.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
+	.dlfs_resvseg =		RESVSEG,
+
+	.dlfs_pad = 		{ 0 },
+	.dlfs_cksum =		0
 };
 
-#define SECTOR_TO_BYTES(_S) (512 * _S)
-#define FSBLOCK_TO_BYTES(_S) (DFL_LFSBLOCK * _S)
 
 int main(int argc, char **argv)
 {
@@ -243,22 +266,6 @@ int main(int argc, char **argv)
 
 	fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fd != 0);
-
-	/*
-	 * We start at block 2, as block 0 is just padding and block 1 is the
-	 * superblock.
-	 */
-	lfs.dlfs_offset = 2;
-	lfs.dlfs_lastpseg = 2;
-
-	/* All segments are available except the reserved ones, */
-	avail_segs = (SIZE/DFL_LFSSEG) - lfs.dlfs_resvseg;
-	lfs.dlfs_avail = (avail_segs * DFL_LFSSEG) / DFL_LFSBLOCK;
-	/* the start padding (block 0), and the */
-	lfs.dlfs_avail--;
-	/* NSUPERBLOCKS superblocks */
-	lfs.dlfs_avail -= NSUPERBLOCKS;
-
 /*
 bwrite(blkno=32)
 
