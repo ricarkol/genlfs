@@ -72,9 +72,11 @@
 
 u_int32_t lfs_sb_cksum32(struct dlfs *fs);
 
-#define SIZE	(1024 * 1024 * 1024)
-#define NSEGS	((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
+/* size args */
+#define SIZE		(1024 * 1024 * 1024)
+#define NSUPERBLOCKS	10
 
+#define NSEGS	((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
 
 /*
  * calculate the maximum file size allowed with the specified block shift.
@@ -96,7 +98,7 @@ static const struct dlfs dlfs32_default = {
 		.dlfs_version =		LFS_VERSION,
 		.dlfs_size =		SIZE/DFL_LFSBLOCK,
 		.dlfs_ssize =		DFL_LFSSEG,
-		.dlfs_dsize =		((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - DFL_LFSBLOCK*10) / DFL_LFSBLOCK,
+		.dlfs_dsize =		((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - DFL_LFSBLOCK*NSUPERBLOCKS) / DFL_LFSBLOCK,
 		.dlfs_bsize =		DFL_LFSBLOCK,
 		.dlfs_fsize =		DFL_LFSFRAG,
 		.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
@@ -229,6 +231,7 @@ int main(int argc, char **argv)
 {
 	struct dlfs lfs = dlfs32_default;
 	int fd;
+	uint32_t avail_segs;
 	off_t off;
 
 	/* XXX: This makes things a lot simpler. */
@@ -247,6 +250,14 @@ int main(int argc, char **argv)
 	 */
 	lfs.dlfs_offset = 2;
 	lfs.dlfs_lastpseg = 2;
+
+	/* All segments are available except the reserved ones, */
+	avail_segs = (SIZE/DFL_LFSSEG) - lfs.dlfs_resvseg;
+	lfs.dlfs_avail = (avail_segs * DFL_LFSSEG) / DFL_LFSBLOCK;
+	/* the start padding (block 0), and the */
+	lfs.dlfs_avail--;
+	/* NSUPERBLOCKS superblocks */
+	lfs.dlfs_avail -= NSUPERBLOCKS;
 
 /*
 bwrite(blkno=32)
@@ -333,6 +344,7 @@ $31 = {0, 1, 2, 3, 4}
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 
 /*
 Data for root directory:
@@ -383,6 +395,7 @@ $55 = {dh_ino = 2, dh_reclen = 500, dh_type = 4 '\004', dh_namlen = 2 '\002'}
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=64)
 
@@ -458,6 +471,7 @@ $61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime 
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=80)
 
@@ -493,6 +507,7 @@ $134 = {clean = 1022, dirty = 1, bfree = 117367, avail = -6, free_head = 3, free
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=96)
 
@@ -527,6 +542,7 @@ $138 = 341
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=112)
 
@@ -548,6 +564,7 @@ $137 = {su_nbytes = 0, su_olastmod = 0, su_nsums = 0, su_ninos = 0, su_flags = 1
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=128)
 
@@ -569,6 +586,7 @@ $145 = {su_nbytes = 0, su_olastmod = 0, su_nsums = 0, su_ninos = 0, su_flags = 1
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=144)
 
@@ -624,6 +642,7 @@ $155 = {
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=16)
 
@@ -661,8 +680,8 @@ $8 = {.dlfs_magic = 459106, dlfs_version = 2, dlfs_size = 131072, dlfs_ssize = 1
 	assert(lfs.dlfs_lastpseg == 10);
 	assert(lfs.dlfs_dmeta == 2);
 
-	lfs.dlfs_bfree = 117365;
-	lfs.dlfs_avail = -8;
+	//lfs.dlfs_bfree = 117365;
+	//lfs.dlfs_avail = -8;
 
 	lfs.dlfs_serial++;
 
@@ -738,6 +757,7 @@ $99 = {0, 1}
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=176)
 
@@ -782,6 +802,7 @@ $100 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=192)
 
@@ -812,6 +833,7 @@ $125 = {clean = 1022, dirty = 1, bfree = 117870, avail = 124397, free_head = 3, 
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=208)
 
@@ -846,6 +868,7 @@ $138 = 341
 	/* Advance the log */
 	lfs.dlfs_offset++;
 	lfs.dlfs_lastpseg++;
+	lfs.dlfs_avail--;
 /*
 bwrite(blkno=16)
 
@@ -866,9 +889,9 @@ symlinklen = 60, dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 913
 	assert(lfs.dlfs_offset == 14);
 	assert(lfs.dlfs_lastpseg == 14);
 	assert(lfs.dlfs_dmeta == 4);
+	assert(lfs.dlfs_avail == 124393);
 
-	lfs.dlfs_bfree = 117868;
-	lfs.dlfs_avail = 124393;
+	//lfs.dlfs_bfree = 117868;
 
 	lfs.dlfs_serial++;
 
