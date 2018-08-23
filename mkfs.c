@@ -731,38 +731,8 @@ $155 = {
 {if_version = 1, if_daddr = 0, if_nextfree = 10, if_atime_sec = 0, if_atime_nsec = 0}}
 */
 
-	{
-	off = FSBLOCK_TO_BYTES(lfs.dlfs_offset);
-	//assert(off == SECTOR_TO_BYTES(144));
-	IFILE32 ifile = {
-		.if_version = 0,
-		.if_daddr = 0,
-		.if_nextfree = 0,
-		.if_atime_sec = 0,
-		.if_atime_nsec = 0
-	};
-	/* inode 0 (zeroed) */
-	assert(pwrite(fd, &ifile, sizeof(ifile), off) == sizeof(ifile));
-	off += sizeof(ifile);
-	/* inode 1 */
-	ifile.if_version = 1;
-	assert(pwrite(fd, &ifile, sizeof(ifile), off) == sizeof(ifile));
-	off += sizeof(ifile);
-	/* inode 2 */
-	ifile.if_version = 1;
-	ifile.if_daddr = 4;
-	assert(pwrite(fd, &ifile, sizeof(ifile), off) == sizeof(ifile));
-	off += sizeof(ifile);
-	/* inode 3, etc */
-	int i;
-	for (i = 3; i < DFL_LFSBLOCK / sizeof(ifile); i++) {
-		ifile.if_version = 1;
-		ifile.if_daddr = 0;
-		ifile.if_nextfree = i + 1;
-		assert(pwrite(fd, &ifile, sizeof(ifile), off) == sizeof(ifile));
-		off += sizeof(ifile);
-	}
-	}
+	assert(pwrite(fd, &ifiles, sizeof(ifiles),
+		FSBLOCK_TO_BYTES(lfs.dlfs_offset)) == sizeof(ifiles));
 
 	advance_log(&lfs, 1);
 /*
