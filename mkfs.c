@@ -391,9 +391,9 @@ $60 = {di_mode = 16877, di_nlink = 2, di_inumber = 2, di_size = 512, di_atime = 
 	off = FSBLOCK_TO_BYTES(lfs->dlfs_offset);
 	assert(off == SECTOR_TO_BYTES(64));
 	struct lfs32_dinode dinode = {
-		.di_mode = 16877,
+		.di_mode = LFS_IFDIR | 0755,
 		.di_nlink = 2,
-		.di_inumber = 2,
+		.di_inumber = ULFS_ROOTINO,
 		.di_size = 512,
 		.di_atime = time(0),
 		.di_atimensec = 0,
@@ -410,6 +410,7 @@ $60 = {di_mode = 16877, di_nlink = 2, di_inumber = 2, di_size = 512, di_atime = 
 		.di_gid = 0,
 		.di_modrev = 0
 	};
+	assert(dinode.di_mode == 16877);
 	assert(pwrite(fd, &dinode, sizeof(dinode), off) == sizeof(dinode));
 
 	inode_bno = lfs->dlfs_offset;
@@ -468,32 +469,40 @@ $61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime 
 */
 	// TODO: check that there are enough blocks in this segment for the ifile
 
-	{
-	off_t off;
-	off = FSBLOCK_TO_BYTES(lfs->dlfs_offset);
+	int nblocks = lfs->dlfs_cleansz + lfs->dlfs_segtabsz + 1;
+	assert(nblocks == 5);
+	int32_t first_data_bno = lfs->dlfs_offset + 1; /* one after this inode */
+	int32_t i, bno;
+
+	/* TODO: implement indirect disk blocks */
+	assert(nblocks <= ULFS_NDADDR);
+
 	struct lfs32_dinode dinode = {
-		.di_mode = 33152,
+		.di_mode = LFS_IFREG | 0600,
 		.di_nlink = 1,
-		.di_inumber = 1,
-		.di_size = 40960,
+		.di_inumber = LFS_IFILE_INUM,
+		.di_size = nblocks * DFL_LFSBLOCK,
 		.di_atime = time(0),
 		.di_atimensec = 0,
 		.di_mtime = time(0),
 		.di_mtimensec = 0,
 		.di_ctime = time(0),
 		.di_ctimensec = 0,
-		.di_db = {6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0},
+		.di_db = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		.di_ib = {0, 0, 0},
 		.di_flags = 131072,
-		.di_blocks = 5,
+		.di_blocks = nblocks,
 		.di_gen = 1,
 		.di_uid = 0,
 		.di_gid = 0,
 		.di_modrev = 0
 	};
-	assert(pwrite(fd, &dinode, sizeof(dinode), off) == sizeof(dinode));
-	off += sizeof(dinode);
-	}
+	for (i = 0, bno = first_data_bno; i < nblocks; i++, bno++)
+		dinode.di_db[i] = bno;
+
+	assert(dinode.di_mode == 33152);
+	assert(pwrite(fd, &dinode, sizeof(dinode),
+		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(dinode));
 
 	/* point to ifile inode */
 	lfs->dlfs_idaddr = lfs->dlfs_offset;
