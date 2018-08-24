@@ -456,6 +456,122 @@ void init_ifile(struct _ifile *ifile)
 	}
 }
 
+void write_ifile(int fd, struct dlfs *lfs, struct _ifile *ifile)
+{
+
+/*
+INODE for ifile:
+
+(gdb) p *(struct lfs32_dinode *)(bp->b_data + sizeof(struct lfs32_dinode))
+$61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime = 1534531037, di_atimensec = 0, di_mtime = 1534531037, di_mtimensec = 0, di_ctime = 153453103
+7, di_ctimensec = 0, di_db = {5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0}, di_ib = {0, 0, 0}, di_flags = 131072, di_blocks = 5, di_gen = 1, di_uid = 0, di_gid = 0, di_modrev = 0}
+*/
+	// TODO: check that there are enough blocks in this segment for the ifile
+
+	{
+	off_t off;
+	off = FSBLOCK_TO_BYTES(lfs->dlfs_offset);
+	struct lfs32_dinode dinode = {
+		.di_mode = 33152,
+		.di_nlink = 1,
+		.di_inumber = 1,
+		.di_size = 40960,
+		.di_atime = time(0),
+		.di_atimensec = 0,
+		.di_mtime = time(0),
+		.di_mtimensec = 0,
+		.di_ctime = time(0),
+		.di_ctimensec = 0,
+		.di_db = {6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0},
+		.di_ib = {0, 0, 0},
+		.di_flags = 131072,
+		.di_blocks = 5,
+		.di_gen = 1,
+		.di_uid = 0,
+		.di_gid = 0,
+		.di_modrev = 0
+	};
+	assert(pwrite(fd, &dinode, sizeof(dinode), off) == sizeof(dinode));
+	off += sizeof(dinode);
+	}
+
+	/* point to ifile inode */
+	lfs->dlfs_idaddr = lfs->dlfs_offset;
+	assert(lfs->dlfs_idaddr == 5);
+
+	ifile->ifiles[LFS_IFILE_INUM].if_daddr = 5;
+	ifile->ifiles[LFS_IFILE_INUM].if_nextfree = 0;
+	assert(ifile->ifiles[LFS_IFILE_INUM].if_daddr == 5);
+	ifile->cleanerinfo.free_head++;
+
+	advance_log(lfs, 1);
+/*
+bwrite(blkno=80)
+
+IFILE/CLEANER INFO:
+
+(gdb) p *(struct _cleanerinfo32 *)(bp->b_data)
+$134 = {clean = 1022, dirty = 1, bfree = 117367, avail = -6, free_head = 3, free_tail = 408, flags = 0}
+*/
+	ifile->cleanerinfo.clean = lfs->dlfs_nclean,
+	ifile->cleanerinfo.dirty = lfs->dlfs_curseg + 1,
+	ifile->cleanerinfo.bfree = lfs->dlfs_bfree,
+	ifile->cleanerinfo.avail = lfs->dlfs_avail,
+	assert(ifile->cleanerinfo.clean == 1022);
+	assert(ifile->cleanerinfo.dirty == 1);
+	assert(ifile->cleanerinfo.free_head == 3);
+	assert(ifile->cleanerinfo.free_tail == 408);
+	assert(pwrite(fd, &ifile->cleanerinfo, sizeof(ifile->cleanerinfo),
+		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->cleanerinfo));
+	advance_log(lfs, 1);
+
+/*
+bwrite(blkno=96)
+
+IFILE/SEGUSAGE (block 1):
+
+(gdb) p *(struct segusage *)(bp->b_data)
+$135 = {su_nbytes = 49408, su_olastmod = 0, su_nsums = 1, su_ninos = 1, su_flags = 7, su_lastmod = 0}
+
+(gdb) p fs->lfs_dlfs_u.u_32.dlfs_sepb
+$138 = 341
+*/
+	ifile->segusage[0].su_nbytes = 49408;
+	ifile->segusage[0].su_olastmod = 0;
+	ifile->segusage[0].su_nsums = 1;
+	ifile->segusage[0].su_ninos = 2;
+	ifile->segusage[0].su_flags = SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK;
+	ifile->segusage[0].su_lastmod = 0;
+	assert(pwrite(fd, ifile->segusage, sizeof(ifile->segusage),
+		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->segusage));
+	advance_log(lfs, 3);
+
+/*
+bwrite(blkno=144)
+
+IFILE/INODE MAP:
+
+(gdb) p *(IFILE32 (*)[10])(bp->b_data)
+$155 = {
+{if_version = 0, if_daddr = 0, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 0, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 4, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0}, <== INODE 2 at BLOCK=4 (lbn=64)
+{if_version = 1, if_daddr = 0, if_nextfree = 4, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 0, if_nextfree = 5, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 0, if_nextfree = 6, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 0, if_nextfree = 7, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 0, if_nextfree = 8, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 0, if_nextfree = 9, if_atime_sec = 0, if_atime_nsec = 0},
+{if_version = 1, if_daddr = 0, if_nextfree = 10, if_atime_sec = 0, if_atime_nsec = 0}}
+*/
+
+	assert(pwrite(fd, &ifile->ifiles, sizeof(ifile->ifiles),
+		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->ifiles));
+
+	advance_log(lfs, 1);
+
+}
+
 int main(int argc, char **argv)
 {
 	struct dlfs lfs = dlfs32_default;
@@ -593,115 +709,8 @@ $31 = {0, 1, 2, 3, 4}
 	assert(ifile.ifiles[ULFS_ROOTINO].if_daddr == 4);
 	ifile.cleanerinfo.free_head++;
 
-/*
-INODE for ifile:
+	write_ifile(fd, &lfs, &ifile);
 
-(gdb) p *(struct lfs32_dinode *)(bp->b_data + sizeof(struct lfs32_dinode))
-$61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime = 1534531037, di_atimensec = 0, di_mtime = 1534531037, di_mtimensec = 0, di_ctime = 153453103
-7, di_ctimensec = 0, di_db = {5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0}, di_ib = {0, 0, 0}, di_flags = 131072, di_blocks = 5, di_gen = 1, di_uid = 0, di_gid = 0, di_modrev = 0}
-*/
-	// TODO: check that there are enough blocks in this segment for the ifile
-
-	{
-	off = FSBLOCK_TO_BYTES(lfs.dlfs_offset);
-	struct lfs32_dinode dinode = {
-		.di_mode = 33152,
-		.di_nlink = 1,
-		.di_inumber = 1,
-		.di_size = 40960,
-		.di_atime = time(0),
-		.di_atimensec = 0,
-		.di_mtime = time(0),
-		.di_mtimensec = 0,
-		.di_ctime = time(0),
-		.di_ctimensec = 0,
-		.di_db = {6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0},
-		.di_ib = {0, 0, 0},
-		.di_flags = 131072,
-		.di_blocks = 5,
-		.di_gen = 1,
-		.di_uid = 0,
-		.di_gid = 0,
-		.di_modrev = 0
-	};
-	assert(pwrite(fd, &dinode, sizeof(dinode), off) == sizeof(dinode));
-	off += sizeof(dinode);
-	}
-
-	/* point to ifile inode */
-	lfs.dlfs_idaddr = lfs.dlfs_offset;
-	assert(lfs.dlfs_idaddr == 5);
-
-	ifile.ifiles[LFS_IFILE_INUM].if_daddr = 5;
-	ifile.ifiles[LFS_IFILE_INUM].if_nextfree = 0;
-	assert(ifile.ifiles[LFS_IFILE_INUM].if_daddr == 5);
-	ifile.cleanerinfo.free_head++;
-
-	advance_log(&lfs, 1);
-/*
-bwrite(blkno=80)
-
-IFILE/CLEANER INFO:
-
-(gdb) p *(struct _cleanerinfo32 *)(bp->b_data)
-$134 = {clean = 1022, dirty = 1, bfree = 117367, avail = -6, free_head = 3, free_tail = 408, flags = 0}
-*/
-	ifile.cleanerinfo.clean = lfs.dlfs_nclean,
-	ifile.cleanerinfo.dirty = lfs.dlfs_curseg + 1,
-	ifile.cleanerinfo.bfree = lfs.dlfs_bfree,
-	ifile.cleanerinfo.avail = lfs.dlfs_avail,
-	assert(ifile.cleanerinfo.clean == 1022);
-	assert(ifile.cleanerinfo.dirty == 1);
-	assert(ifile.cleanerinfo.free_head == 3);
-	assert(ifile.cleanerinfo.free_tail == 408);
-	assert(pwrite(fd, &ifile.cleanerinfo, sizeof(ifile.cleanerinfo),
-		FSBLOCK_TO_BYTES(lfs.dlfs_offset)) == sizeof(ifile.cleanerinfo));
-	advance_log(&lfs, 1);
-
-/*
-bwrite(blkno=96)
-
-IFILE/SEGUSAGE (block 1):
-
-(gdb) p *(struct segusage *)(bp->b_data)
-$135 = {su_nbytes = 49408, su_olastmod = 0, su_nsums = 1, su_ninos = 1, su_flags = 7, su_lastmod = 0}
-
-(gdb) p fs->lfs_dlfs_u.u_32.dlfs_sepb
-$138 = 341
-*/
-	ifile.segusage[0].su_nbytes = 49408;
-	ifile.segusage[0].su_olastmod = 0;
-	ifile.segusage[0].su_nsums = 1;
-	ifile.segusage[0].su_ninos = 2;
-	ifile.segusage[0].su_flags = SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK;
-	ifile.segusage[0].su_lastmod = 0;
-	assert(pwrite(fd, ifile.segusage, sizeof(ifile.segusage),
-		FSBLOCK_TO_BYTES(lfs.dlfs_offset)) == sizeof(ifile.segusage));
-	advance_log(&lfs, 3);
-
-/*
-bwrite(blkno=144)
-
-IFILE/INODE MAP:
-
-(gdb) p *(IFILE32 (*)[10])(bp->b_data)
-$155 = {
-{if_version = 0, if_daddr = 0, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 0, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 4, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0}, <== INODE 2 at BLOCK=4 (lbn=64)
-{if_version = 1, if_daddr = 0, if_nextfree = 4, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 0, if_nextfree = 5, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 0, if_nextfree = 6, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 0, if_nextfree = 7, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 0, if_nextfree = 8, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 0, if_nextfree = 9, if_atime_sec = 0, if_atime_nsec = 0},
-{if_version = 1, if_daddr = 0, if_nextfree = 10, if_atime_sec = 0, if_atime_nsec = 0}}
-*/
-
-	assert(pwrite(fd, &ifile.ifiles, sizeof(ifile.ifiles),
-		FSBLOCK_TO_BYTES(lfs.dlfs_offset)) == sizeof(ifile.ifiles));
-
-	advance_log(&lfs, 1);
 /*
 bwrite(blkno=16)
 
