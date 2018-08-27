@@ -276,10 +276,9 @@ void advance_log(struct dlfs *lfs, int nr)
 	lfs->dlfs_bfree -= 1;
 }
 
-struct segment *start_segment(struct dlfs *lfs)
+struct segment *start_segment(struct dlfs *lfs, struct segment *seg, char *sb)
 {
-	struct segment *seg = calloc(1, sizeof(struct segment));
-	assert(seg != NULL);
+	struct segsum32 *segsum = (struct segsum32 *)sb;
 
 	seg->fs = (struct lfs*)lfs;
 	seg->ninodes = 0;
@@ -287,10 +286,24 @@ struct segment *start_segment(struct dlfs *lfs)
 	seg->sum_bytes_left = lfs->dlfs_sumsize;
 	seg->seg_number = lfs->dlfs_curseg;
 	//seg->start_lbp = lfs->dlfs_nextseg;
-	seg->segsum = NULL;
-	seg->fip = NULL;
+	seg->segsum = (void *)sb;
 
-	return seg;
+	/*
+	 * We create one segment summary per segment. In other words,
+	 * one partial segment per segment.
+	 */
+	segsum->ss_magic = SS_MAGIC,
+	segsum->ss_next = lfs->dlfs_nextseg;
+	assert(segsum->ss_next == 128);
+	segsum->ss_ident = 249755386;
+	segsum->ss_nfinfo = 0;
+	segsum->ss_ninos = 0;
+	segsum->ss_flags = SS_RFW;
+	segsum->ss_reclino = 0;
+	segsum->ss_serial = 1;
+	segsum->ss_create = 0;
+
+	seg->fip = ((uint64_t)sb) + sizeof(segsum);
 }
 
 void write_partial_segment_summary(struct segment *seg)
@@ -437,7 +450,8 @@ int main(int argc, char **argv)
 	int fd;
 	uint32_t avail_segs;
 	off_t off;
-	struct segment *curr_seg;
+	struct segment curr_seg;
+	char summary_block[lfs.dlfs_sumsize];
 	IFILE32 ifiles[MAX_INODES];
 
 	/* XXX: Artifial limit on max inodes. */
@@ -455,7 +469,7 @@ int main(int argc, char **argv)
 	fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fd != 0);
 
-	curr_seg = start_segment(&lfs);
+	start_segment(&lfs, &curr_seg, &summary_block);
 
 /*
 bwrite(blkno=32)
@@ -467,7 +481,6 @@ $31 = {ss_sumsum = 28386, ss_datasum = 33555, ss_magic = 398689, ss_next = 128, 
 lags = 8, ss_pad = "\000", ss_reclino = 0, ss_serial = 1, ss_create = 0}
 */
 
-	char summary_block[lfs.dlfs_sumsize];
 	char *sb = summary_block;
 
 	{
@@ -492,7 +505,6 @@ lags = 8, ss_pad = "\000", ss_reclino = 0, ss_serial = 1, ss_create = 0}
 
 	memcpy(sb, &lfs, sizeof(segsum));
 
-	//assert(pwrite(fd, &lfs, sizeof(segsum), off) == sizeof(segsum));
 	off += sizeof(segsum);
 	sb += sizeof(segsum);
 
@@ -515,13 +527,11 @@ $28 = 0
 		.fi_ino = 2,
 		.fi_lastlength = 8192
 	};
-	//assert(pwrite(fd, &finfo, sizeof(finfo), off) == sizeof(finfo));
 	memcpy(sb, &finfo, sizeof(finfo));
 	off += sizeof(finfo);
 	sb += sizeof(finfo);
 	for (i = 0; i < finfo.fi_nblocks; i++) {
 		IINFO32 iinfo = { .ii_block = i };
-		//assert(pwrite(fd, &iinfo, sizeof(iinfo), off) == sizeof(iinfo));
 		memcpy(sb, &iinfo, sizeof(iinfo));
 		off += sizeof(iinfo);
 		sb += sizeof(iinfo);
@@ -545,21 +555,19 @@ $31 = {0, 1, 2, 3, 4}
 		.fi_ino = 1,
 		.fi_lastlength = 8192
 	};
-	//assert(pwrite(fd, &finfo, sizeof(finfo), off) == sizeof(finfo));
 	memcpy(sb, &finfo, sizeof(finfo));
 	off += sizeof(finfo);
 	sb += sizeof(finfo);
 	for (i = 0; i < finfo.fi_nblocks; i++) {
 		IINFO32 iinfo = { .ii_block = i };
-		//assert(pwrite(fd, &iinfo, sizeof(iinfo), off) == sizeof(iinfo));
 		memcpy(sb, &iinfo, sizeof(iinfo));
 		off += sizeof(iinfo);
 		sb += sizeof(iinfo);
 	}
 	}
 
-	assert(pwrite(fd, summary_block, lfs.dlfs_sumsize,
-		FSBLOCK_TO_BYTES(lfs.dlfs_offset)) == lfs.dlfs_sumsize);
+	//assert(pwrite(fd, summary_block, lfs.dlfs_sumsize,
+	//	FSBLOCK_TO_BYTES(lfs.dlfs_offset)) == lfs.dlfs_sumsize);
 
 	advance_log(&lfs, 1);
 
