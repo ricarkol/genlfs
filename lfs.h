@@ -1121,6 +1121,8 @@ struct segment {
 	uint32_t seg_number;		/* number of this segment */
 	union lfs_blocks start_lbp;	/* beginning lbn for this set */
 
+	int32_t		disk_bno;	/* expected location on disk */
+
 #define SEGM_CKP	0x0001		/* doing a checkpoint */
 #define SEGM_CLEAN	0x0002		/* cleaner call; don't sort */
 #define SEGM_SYNC	0x0004		/* wait for segment */
