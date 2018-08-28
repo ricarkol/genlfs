@@ -439,17 +439,17 @@ $60 = {di_mode = 16877, di_nlink = 2, di_inumber = 2, di_size = 512, di_atime = 
 	advance_log(lfs, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
-	struct finfo32 *finfo = seg->fip;
+	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
 	finfo->fi_nblocks = 1;
 	finfo->fi_version = 1;
 	finfo->fi_ino = ULFS_ROOTINO;
 	finfo->fi_lastlength = DFL_LFSBLOCK;
-	seg->fip = (uint64_t)seg->fip + sizeof(struct finfo32);
+	seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(struct finfo32));
 	IINFO32 *blocks = (IINFO32 *)seg->fip;
 	int i;
 	for (i = 0; i < finfo->fi_nblocks; i++) {
 		blocks[i].ii_block = i;
-		seg->fip = (uint64_t)seg->fip + sizeof(IINFO32);
+		seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(IINFO32));
 	}
 	((struct segsum32 *)seg->segsum)->ss_ninos++;
 	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
@@ -614,16 +614,16 @@ $155 = {
 	advance_log(lfs, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
-	struct finfo32 *finfo = seg->fip;
+	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
 	finfo->fi_nblocks = nblocks;
 	finfo->fi_version = 1;
 	finfo->fi_ino = LFS_IFILE_INUM;
 	finfo->fi_lastlength = DFL_LFSBLOCK;
-	seg->fip = (uint64_t)seg->fip + sizeof(struct finfo32);
+	seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(struct finfo32));
 	IINFO32 *blocks = (IINFO32 *)seg->fip;
 	for (i = 0; i < finfo->fi_nblocks; i++) {
 		blocks[i].ii_block = i;
-		seg->fip = (uint64_t)seg->fip + sizeof(IINFO32);
+		seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(IINFO32));
 	}
 	((struct segsum32 *)seg->segsum)->ss_ninos++;
 	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
