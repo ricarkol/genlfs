@@ -119,8 +119,7 @@ static const struct dlfs dlfs32_default = {
 
 	/*
 	 * Initial state:
-	 * We start at block 2, as block 0 is just padding and block 1
-	 * is the superblock.
+	 * We start at block 1, as block 0 is just padding.
 	 */
 	.dlfs_offset =		2,
 	.dlfs_lastpseg =	2,
@@ -259,6 +258,18 @@ struct _ifile {
 	IFILE32	ifiles[MAX_INODES];
 };
 
+/* Add a block into the data checksum */
+void segment_add_datasum(struct segment *seg, char *block, int size)
+{
+	int i;
+	for (i = 0; i < size; i += DFL_LFSBLOCK) {
+		/* The final checksum will be done out of the first byte of
+		 * every block */
+		*seg->cur_data_for_cksum = *((int32_t *)&block[i]);
+		seg->cur_data_for_cksum++;
+	}
+}
+
 int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 {
 	int i;
@@ -301,6 +312,7 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 	seg->seg_number = lfs->dlfs_curseg;
 	seg->disk_bno = lfs->dlfs_offset;
 	seg->segsum = (void *)sb;
+	seg->cur_data_for_cksum = &seg->data_for_cksum[0];
 
 	/*
 	 * We create one segment summary per segment. In other words,
@@ -315,7 +327,6 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 	segsum->ss_flags = SS_RFW;
 	segsum->ss_reclino = 0;
 	segsum->ss_serial++;
-	segsum->ss_create = time(0);
 
 	seg->fip = (FINFO *)(sb + sizeof(struct segsum32));
 
@@ -388,11 +399,13 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 	/* Data for root directory (blkno=48): */
 	memset(block, 0, DFL_LFSBLOCK);
 	get_empty_root_dir(block);
+
 	assert(pwrite(fd, block, sizeof(block),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(block));
 	root_bno = lfs->dlfs_offset;
 	assert(root_bno == 3);
 
+	segment_add_datasum(seg, (char*)block, DFL_LFSBLOCK);
 	advance_log(lfs, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 /*
@@ -435,6 +448,7 @@ $60 = {di_mode = 16877, di_nlink = 2, di_inumber = 2, di_size = 512, di_atime = 
 	ifile->cleanerinfo.free_head++;
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
+	segment_add_datasum(seg, (char *)&dinode, DFL_LFSBLOCK);
 	advance_log(lfs, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
@@ -519,7 +533,7 @@ $61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime 
 		.di_ctimensec = 0,
 		.di_db = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		.di_ib = {0, 0, 0},
-		.di_flags = 131072,
+		.di_flags = SF_IMMUTABLE,
 		.di_blocks = nblocks,
 		.di_gen = 1,
 		.di_uid = 0,
@@ -530,6 +544,8 @@ $61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime 
 		dinode.di_db[i] = bno;
 
 	assert(dinode.di_mode == 33152);
+	assert(dinode.di_flags == 131072);
+
 	assert(pwrite(fd, &dinode, sizeof(dinode),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(dinode));
 
@@ -543,6 +559,7 @@ $61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime 
 	ifile->cleanerinfo.free_head++;
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
+	segment_add_datasum(seg, (char *)&dinode, DFL_LFSBLOCK);
 	advance_log(lfs, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 /*
@@ -563,9 +580,10 @@ $134 = {clean = 1022, dirty = 1, bfree = 117367, avail = -6, free_head = 3, free
 	assert(ifile->cleanerinfo.free_tail == 408);
 	assert(pwrite(fd, &ifile->cleanerinfo, sizeof(ifile->cleanerinfo),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->cleanerinfo));
+
+	segment_add_datasum(seg, (char *)&ifile->cleanerinfo, DFL_LFSBLOCK);
 	advance_log(lfs, lfs->dlfs_cleansz);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK * lfs->dlfs_cleansz;
-
 /*
 bwrite(blkno=96)
 
@@ -585,6 +603,8 @@ $138 = 341
 
 	assert(pwrite(fd, ifile->segusage, sizeof(ifile->segusage),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->segusage));
+
+	segment_add_datasum(seg, (char *)ifile->segusage, lfs->dlfs_segtabsz * DFL_LFSBLOCK);
 	advance_log(lfs, lfs->dlfs_segtabsz);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK * lfs->dlfs_segtabsz;
 
@@ -610,6 +630,7 @@ $155 = {
 	assert(pwrite(fd, &ifile->ifiles, sizeof(ifile->ifiles),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->ifiles));
 
+	segment_add_datasum(seg, (char *)&ifile->ifiles, DFL_LFSBLOCK);
 	advance_log(lfs, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
@@ -626,6 +647,18 @@ $155 = {
 	}
 	((struct segsum32 *)seg->segsum)->ss_ninos++;
 	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
+}
+
+void write_segment_summary(int fd, struct dlfs *lfs, struct segment *seg, char *summary_block)
+{
+	char *datap, *dp;
+
+	((struct segsum32 *)seg->segsum)->ss_create = time(0);
+
+	//assert(((struct segsum32 *)seg->segsum)->ss_datasum == 33555);
+
+	assert(pwrite(fd, summary_block, lfs->dlfs_sumsize,
+		FSBLOCK_TO_BYTES(seg->disk_bno)) == lfs->dlfs_sumsize);
 }
 
 int main(int argc, char **argv)
@@ -648,6 +681,7 @@ int main(int argc, char **argv)
 	/* XXX: These make things a lot simpler. */
 	assert(DFL_LFSFRAG == DFL_LFSBLOCK);
 	assert(lfs.dlfs_fsbpseg > (2 + 6 + 2));
+	assert(lfs.dlfs_fsbpseg < MAX_BLOCKS_PER_SEG);
 	assert(lfs.dlfs_cleansz == 1);
 	assert(lfs.dlfs_segtabsz == 3);
 
@@ -750,8 +784,8 @@ $31 = {0, 1, 2, 3, 4}
 	assert(*(summary_block + sizeof(struct segsum32) +
 		sizeof(struct finfo32) + sizeof(int) +
 		sizeof(struct finfo32) + sizeof(int) + sizeof(int)) == 2);
-	assert(pwrite(fd, summary_block, lfs.dlfs_sumsize,
-		FSBLOCK_TO_BYTES(seg.disk_bno)) == lfs.dlfs_sumsize);
+
+	write_segment_summary(fd, &lfs, &seg, (char *)summary_block);
 
 	return 0;
 }
