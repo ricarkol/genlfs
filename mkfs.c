@@ -371,7 +371,6 @@ $55 = {dh_ino = 2, dh_reclen = 500, dh_type = 4 '\004', dh_namlen = 2 '\002'}
 	memcpy(b, &buf, 2);
 	b += 4;
 	}
-
 }
 
 
@@ -750,7 +749,7 @@ $31 = {0, 1, 2, 3, 4}
 	assert(finfo2->fi_ino == 1);
 	assert(*(summary_block + sizeof(struct segsum32) +
 		sizeof(struct finfo32) + sizeof(int) +
-		sizeof(struct finfo32) + sizeof(int)) == 1);
+		sizeof(struct finfo32) + sizeof(int) + sizeof(int)) == 2);
 	assert(pwrite(fd, summary_block, lfs.dlfs_sumsize,
 		FSBLOCK_TO_BYTES(seg.disk_bno)) == lfs.dlfs_sumsize);
 
