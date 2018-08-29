@@ -178,79 +178,6 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_cksum =		0
 };
 
-static const struct dlfs64 dlfs64_default = {
-	.dlfs_magic =		LFS64_MAGIC,
-	.dlfs_version =		LFS_VERSION,
-	.dlfs_size =		0,
-	.dlfs_dsize =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG -
-			DFL_LFSBLOCK*10) / DFL_LFSBLOCK,
-	.dlfs_ssize =		DFL_LFSSEG,
-	.dlfs_bsize =		DFL_LFSBLOCK,
-	.dlfs_fsize =		DFL_LFSFRAG,
-	.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
-	.dlfs_freehd =		HIGHEST_USED_INO + 1,
-	.dlfs_idaddr =		0,
-	.dlfs_uinodes =		0,
-	.dlfs_unused_0 =	0,
-	.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
-
-	/*
-	 * Initial state:
-	 * We start at block 2, as block 0 is just padding and block 1
-	 * is the superblock.
-	 */
-	.dlfs_offset =		2,
-	.dlfs_lastpseg =	2,
-	.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
-	.dlfs_curseg =		0,
-	.dlfs_bfree =		0, /* ??? */
-	.dlfs_nfiles =		0,
-	/* 1 for the start padding (block 0)  */
-	.dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
-				NSUPERBLOCKS - 1,
-
-	.dlfs_inopf =		512/sizeof(struct lfs64_dinode),
-	.dlfs_minfree =		MINFREE,
-	.dlfs_maxfilesize =	MAXFILESIZE64,
-	.dlfs_fsbpseg =		DFL_LFSSEG/DFL_LFSFRAG,
-	.dlfs_inopb =		DFL_LFSBLOCK/sizeof(struct lfs64_dinode),
-	.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE64),
-	.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
-	.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int64_t),
-	.dlfs_nseg =		NSEGS,
-	.dlfs_nspf =		0,
-	.dlfs_cleansz =		1,
-	.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
-				(DFL_LFSBLOCK/sizeof(SEGUSE)),
-	.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
-	.dlfs_ffshift =		DFL_LFS_FFSHIFT,
-	.dlfs_fbshift =		DFL_LFS_FBSHIFT,
-	.dlfs_bmask =		DFL_LFSBLOCK_MASK,
-	.dlfs_ffmask =		DFL_LFS_FFMASK,
-	.dlfs_fbmask =		DFL_LFS_FBMASK,
-	.dlfs_blktodb =		LOG2(DFL_LFSBLOCK/512),
-	.dlfs_sushift =		0,
-	.dlfs_sboffs =		{ 0 },
-	.dlfs_maxsymlinklen =	LFS64_MAXSYMLINKLEN,
-	.dlfs_nclean =  	NSEGS - 1,
-	.dlfs_fsmnt =   	{ 0 },
-	.dlfs_pflags =  	LFS_PF_CLEAN,
-	.dlfs_dmeta =		0,
-	.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
-	.dlfs_sumsize =		DFL_LFSFRAG,
-	.dlfs_ibsize =		DFL_LFSFRAG,
-	.dlfs_inodefmt =	LFS_44INODEFMT,
-	.dlfs_serial =		0,
-	.dlfs_s0addr =		0,
-	.dlfs_tstamp =  	0,
-	.dlfs_interleave =	0,
-	.dlfs_ident =		0,
-	.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
-	.dlfs_resvseg =		RESVSEG,
-
-	.dlfs_pad = 		{ 0 },
-	.dlfs_cksum =		0
-};
 
 struct _ifile {
 	struct _cleanerinfo32 cleanerinfo;
@@ -298,16 +225,14 @@ void advance_log(struct dlfs *lfs, int nr)
 	lfs->dlfs_bfree -= nr;
 }
 
-void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, char *sb, bool superblock)
+void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, char *sb)
 {
 	struct segsum32 *segsum = (struct segsum32 *)sb;
 
 	lfs->dlfs_curseg++;
 
-	if (superblock) {
+	if (ifile->segusage[lfs->dlfs_curseg].su_flags & SEGUSE_SUPERBLOCK) {
 		advance_log(lfs, 1);
-		/* We are writing a superblock on this segment. */
-		ifile->segusage[lfs->dlfs_curseg].su_flags |= SEGUSE_SUPERBLOCK;
 	}
 
 	seg->fs = (struct lfs*)lfs;
@@ -718,7 +643,7 @@ int main(int argc, char **argv)
 	init_sboffs(&lfs, &ifile);
 
 	lfs.dlfs_curseg = -1;
-	start_segment(&lfs, &seg, &ifile, (char *)&summary_block, true);
+	start_segment(&lfs, &seg, &ifile, (char *)&summary_block);
 
 	write_empty_root_dir(fd, &lfs, &seg, &ifile);
 
