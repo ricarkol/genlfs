@@ -117,21 +117,15 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_idaddr =		0,
 	.dlfs_ifile =		LFS_IFILE_INUM,
 	.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
-
-	/*
-	 * Initial state:
-	 * We start at block 1, as block 0 is just padding.
-	 */
-	.dlfs_offset =		1,
-	.dlfs_lastpseg =	1,
+	.dlfs_offset =		0,
+	.dlfs_lastpseg =	0,
 	.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
 	.dlfs_curseg =		0,
 	.dlfs_bfree =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
 			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK,
 	.dlfs_nfiles =		0,
-	/* 1 for the start padding (block 0)  */
 	.dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
-				NSUPERBLOCKS - 1,
+				NSUPERBLOCKS,
 
 	.dlfs_inopf =		512/sizeof(struct lfs32_dinode),
 	.dlfs_minfree =		MINFREE,
@@ -229,9 +223,18 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 {
 	struct segsum32 *segsum = (struct segsum32 *)sb;
 
-	lfs->dlfs_curseg++;
+	++lfs->dlfs_curseg;
+
+	if (lfs->dlfs_curseg == 0) {
+		/* The first block of the first segment is kept empty. */
+		advance_log(lfs, 1);
+	} else {
+		lfs->dlfs_offset = lfs->dlfs_curseg * lfs->dlfs_fsbpseg;
+	}
 
 	if (ifile->segusage[lfs->dlfs_curseg].su_flags & SEGUSE_SUPERBLOCK) {
+		/* The first block is for the superblock of the segment is the
+ 		 * superblock (if any). */
 		advance_log(lfs, 1);
 	}
 
@@ -524,10 +527,10 @@ IFILE/CLEANER INFO:
 (gdb) p *(struct _cleanerinfo32 *)(bp->b_data)
 $134 = {clean = 1022, dirty = 1, bfree = 117367, avail = -6, free_head = 3, free_tail = 408, flags = 0}
 */
-	ifile->cleanerinfo.clean = lfs->dlfs_nclean,
-	ifile->cleanerinfo.dirty = lfs->dlfs_curseg + 1,
-	ifile->cleanerinfo.bfree = lfs->dlfs_bfree,
-	ifile->cleanerinfo.avail = lfs->dlfs_avail,
+	ifile->cleanerinfo.clean = lfs->dlfs_nclean;
+	ifile->cleanerinfo.dirty = lfs->dlfs_curseg + 1;
+	ifile->cleanerinfo.bfree = lfs->dlfs_bfree;
+	ifile->cleanerinfo.avail = lfs->dlfs_avail;
 	assert(ifile->cleanerinfo.clean == 1022);
 	assert(ifile->cleanerinfo.dirty == 1);
 	assert(ifile->cleanerinfo.free_head == 3);
