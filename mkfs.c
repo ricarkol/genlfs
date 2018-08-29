@@ -63,6 +63,7 @@
 #include <err.h>
 #include <time.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "lfs.h"
 #include "lfs_accessors.h"
@@ -76,7 +77,7 @@ u_int32_t lfs_sb_cksum32(struct dlfs *fs);
 
 /* size args */
 #define SIZE		(1024 * 1024 * 1024)
-#define NSUPERBLOCKS	10
+#define NSUPERBLOCKS	LFS_MAXNUMSB
 #define MAX_INODES	(DFL_LFSBLOCK / sizeof(IFILE32))
 
 #define NSEGS		((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
@@ -121,8 +122,8 @@ static const struct dlfs dlfs32_default = {
 	 * Initial state:
 	 * We start at block 1, as block 0 is just padding.
 	 */
-	.dlfs_offset =		2,
-	.dlfs_lastpseg =	2,
+	.dlfs_offset =		1,
+	.dlfs_lastpseg =	1,
 	.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
 	.dlfs_curseg =		0,
 	.dlfs_bfree =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
@@ -157,7 +158,6 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_sushift =		0,
 	.dlfs_maxsymlinklen =	LFS32_MAXSYMLINKLEN,
 	.dlfs_sboffs =		{ 0 },
-	.dlfs_sboffs = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504},
 	.dlfs_nclean =  	NSEGS - 1,
 	.dlfs_fsmnt =   	{ 0 },
 	.dlfs_pflags =  	LFS_PF_CLEAN,
@@ -276,13 +276,12 @@ int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 	int ninos;
 
 	ninos = (segsum->ss_ninos + lfs->dlfs_inopb - 1) / lfs->dlfs_inopb;
-
 	lfs->dlfs_dmeta += (lfs->dlfs_sumsize + ninos * lfs->dlfs_ibsize) / DFL_LFSBLOCK;
-	lfs->dlfs_cksum = lfs_sb_cksum32(lfs);
 
 	assert(lfs->dlfs_dmeta == 2);
 
 	for (i = 0; i < NSUPERBLOCKS; i++) {
+		lfs->dlfs_cksum = lfs_sb_cksum32(lfs);
 		assert(pwrite(fd, lfs, sizeof(*lfs),
 			FSBLOCK_TO_BYTES(lfs->dlfs_sboffs[i])) == sizeof(*lfs));
 		lfs->dlfs_serial++;
@@ -299,11 +298,17 @@ void advance_log(struct dlfs *lfs, int nr)
 	lfs->dlfs_bfree -= nr;
 }
 
-void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, char *sb)
+void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, char *sb, bool superblock)
 {
 	struct segsum32 *segsum = (struct segsum32 *)sb;
 
 	lfs->dlfs_curseg++;
+
+	if (superblock) {
+		advance_log(lfs, 1);
+		/* We are writing a superblock on this segment. */
+		ifile->segusage[lfs->dlfs_curseg].su_flags |= SEGUSE_SUPERBLOCK;
+	}
 
 	seg->fs = (struct lfs*)lfs;
 	seg->ninodes = 0;
@@ -478,7 +483,7 @@ void init_ifile(struct _ifile *ifile)
 		.su_flags = SEGUSE_EMPTY,
 		.su_lastmod = 0
 	};
-	int i;	
+	int i;
 
 	/* XXX: Artifial limit on max inodes. */
 	assert(sizeof(ifile->ifiles) <= DFL_LFSBLOCK);
@@ -497,6 +502,30 @@ void init_ifile(struct _ifile *ifile)
 	for (i = 0; i < NSEGS; i++) {
 		memcpy(&ifile->segusage[i], &empty_segusage,
 			sizeof(empty_segusage));
+	}
+}
+
+void init_sboffs(struct dlfs *lfs, struct _ifile *ifile)
+{
+	int i, j;
+	int sb_interval;	/* number of segs between super blocks */
+
+	if ((sb_interval = NSEGS / LFS_MAXNUMSB) < LFS_MIN_SBINTERVAL)
+		sb_interval = LFS_MIN_SBINTERVAL;
+
+	for (i = j = 0; i < NSEGS; i++) {
+		if (i == 0) {
+			ifile->segusage[i].su_flags = SEGUSE_SUPERBLOCK;
+			lfs->dlfs_sboffs[j] = 1;
+			++j;
+		}
+		if (i > 0) {
+			if ((i % sb_interval) == 0 && j < LFS_MAXNUMSB) {
+				ifile->segusage[i].su_flags = SEGUSE_SUPERBLOCK;
+				lfs->dlfs_sboffs[j] = i * lfs->dlfs_fsbpseg;
+				++j;
+			}
+		}
 	}
 }
 
@@ -686,12 +715,10 @@ int main(int argc, char **argv)
 	assert(lfs.dlfs_segtabsz == 3);
 
 	init_ifile(&ifile);
+	init_sboffs(&lfs, &ifile);
 
 	lfs.dlfs_curseg = -1;
-	start_segment(&lfs, &seg, &ifile, (char *)&summary_block);
-
-	/* We are planning to write a superblock on this segment. */
-	ifile.segusage[lfs.dlfs_curseg].su_flags |= SEGUSE_SUPERBLOCK;
+	start_segment(&lfs, &seg, &ifile, (char *)&summary_block, true);
 
 	write_empty_root_dir(fd, &lfs, &seg, &ifile);
 
@@ -735,9 +762,11 @@ $8 = {.dlfs_magic = 459106, dlfs_version = 2, dlfs_size = 131072, dlfs_ssize = 1
 	//lfs.dlfs_bfree = 117365;
 	//lfs.dlfs_avail = -8;
 
-	//lfs.dlfs_serial++;
-	//lfs.dlfs_cksum = lfs_sb_cksum32(&lfs);
-	//assert(pwrite(fd, &lfs, sizeof(lfs), DFL_LFSBLOCK) == sizeof(lfs));
+	int offs[] = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392, 104448, 117504};
+	assert(lfs.dlfs_sboffs[0] == offs[0]);
+	assert(lfs.dlfs_sboffs[3] == offs[3]);
+	assert(lfs.dlfs_sboffs[5] == offs[5]);
+	assert(lfs.dlfs_sboffs[8] == offs[8]);
 
 /*
 bwrite(blkno=208896)
