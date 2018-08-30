@@ -857,7 +857,47 @@ int main(int argc, char **argv)
 	assert(dinode->di_gid == 0);
 	assert(dinode->di_modrev == 0);
 
-	
+	/*
+	bwrite(blkno=80)
+
+	INODE for ifile:
+
+	(gdb) p *(struct lfs32_dinode *)(bp->b_data + sizeof(struct lfs32_dinode))
+	$61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960,
+	di_atime = 1534531037, di_atimensec = 0, di_mtime = 1534531037, di_mtimensec =
+	0, di_ctime = 153453103 7, di_ctimensec = 0, di_db = {6, 7, 8, 9, 10, 0, 0, 0,
+	0, 0, 0, 0}, di_ib = {0, 0, 0}, di_flags = 131072, di_blocks = 5, di_gen = 1,
+	di_uid = 0, di_gid = 0, di_modrev = 0}
+	*/
+	assert(pread(fd, block, sizeof(block),
+		SECTOR_TO_BYTES(80)) == sizeof(block));
+
+	dinode = (struct lfs32_dinode *)block;
+	assert(dinode->di_mode == 33152);
+	assert(dinode->di_nlink == 1);
+	assert(dinode->di_inumber == 1);
+	assert(dinode->di_size == 40960);
+	assert(dinode->di_atime > 1534531037);
+	assert(dinode->di_atimensec == 0);
+	assert(dinode->di_mtime > 1534531037);
+	assert(dinode->di_mtimensec == 0);
+	assert(dinode->di_ctime > 1534531037);
+	assert(dinode->di_ctimensec == 0);
+	assert(dinode->di_db[0] == 6);
+	assert(dinode->di_db[1] == 7);
+	assert(dinode->di_db[2] == 8);
+	assert(dinode->di_db[3] == 9);
+	assert(dinode->di_db[4] == 10);
+	for (i = 5; i < 12; i++)
+		assert(dinode->di_db[i] == 0);
+	for (i = 0; i < 3; i++)
+		assert(dinode->di_ib[i] == 0);
+	assert(dinode->di_flags == 131072);
+	assert(dinode->di_blocks == 5);
+	assert(dinode->di_gen == 1);
+	assert(dinode->di_uid == 0);
+	assert(dinode->di_gid == 0);
+	assert(dinode->di_modrev == 0);
 
 	return 0;
 
