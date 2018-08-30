@@ -424,6 +424,8 @@ void init_ifile(struct _ifile *ifile)
 		ifile->ifiles[i].if_version = 1;
 		ifile->ifiles[i].if_daddr = LFS_UNUSED_DADDR;
 		ifile->ifiles[i].if_nextfree = i + 1;
+		ifile->ifiles[i].if_atime_sec = 0;
+		ifile->ifiles[i].if_atime_nsec = 0;
 	}
 
 	ifile->cleanerinfo.free_head = 1;

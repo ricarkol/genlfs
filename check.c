@@ -379,6 +379,8 @@ $60 = {di_mode = 16877, di_nlink = 2, di_inumber = 2, di_size = 512, di_atime = 
 
 	ifile->ifiles[ULFS_ROOTINO].if_daddr = lfs->dlfs_offset;
 	ifile->ifiles[ULFS_ROOTINO].if_nextfree = 0;
+	ifile->ifiles[ULFS_ROOTINO].if_atime_sec = 0;
+	ifile->ifiles[ULFS_ROOTINO].if_atime_nsec = 0;
 	assert(ifile->ifiles[ULFS_ROOTINO].if_daddr == 4);
 	ifile->cleanerinfo.free_head++;
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
@@ -418,7 +420,7 @@ void init_ifile(struct _ifile *ifile)
 	/* XXX: Artifial limit on max inodes. */
 	assert(sizeof(ifile->ifiles) <= DFL_LFSBLOCK);
 
-	memset(&ifile->ifiles[0], 0, sizeof(IFILE32));
+	memset(&ifile->ifiles[0], 0, sizeof(ifile->ifiles));
 
 	for (i = 1; i < MAX_INODES; i++) {
 		ifile->ifiles[i].if_version = 1;
@@ -514,6 +516,8 @@ $61 = {di_mode = 33152, di_nlink = 1, di_inumber = 1, di_size = 40960, di_atime 
 
 	ifile->ifiles[LFS_IFILE_INUM].if_daddr = lfs->dlfs_idaddr;
 	ifile->ifiles[LFS_IFILE_INUM].if_nextfree = 0;
+	ifile->ifiles[LFS_IFILE_INUM].if_atime_sec = 0;
+	ifile->ifiles[LFS_IFILE_INUM].if_atime_nsec = 0;
 	assert(ifile->ifiles[LFS_IFILE_INUM].if_daddr == 5);
 	ifile->cleanerinfo.free_head++;
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
@@ -637,7 +641,11 @@ int main(int argc, char **argv)
 	char block[DFL_LFSBLOCK];
 	struct lfs_dirheader32 *dir;
 	struct lfs32_dinode *dinode;
+	struct _cleanerinfo32 *cleanerinfo;
+	struct segusage *segusage;
 	int i;
+	int sboffs[] = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392,
+			104448, 117504};
 
 	memset(summary_block, 0, lfs.dlfs_sumsize);
 
@@ -705,12 +713,8 @@ int main(int argc, char **argv)
 	assert(lfs.dlfs_nextseg == 128);
 	assert(lfs.dlfs_idaddr == 5);
 
-	int offs[] = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392,
-			104448, 117504};
-	assert(lfs.dlfs_sboffs[0] == offs[0]);
-	assert(lfs.dlfs_sboffs[3] == offs[3]);
-	assert(lfs.dlfs_sboffs[5] == offs[5]);
-	assert(lfs.dlfs_sboffs[8] == offs[8]);
+	for (i = 1; i < 10; i++)
+		assert(lfs.dlfs_sboffs[i] == sboffs[i]);
 
 	/*
 	bwrite(blkno=32)
@@ -899,23 +903,125 @@ int main(int argc, char **argv)
 	assert(dinode->di_gid == 0);
 	assert(dinode->di_modrev == 0);
 
-	return 0;
+	/*
+	bwrite(blkno=96)
 
-	write_empty_root_dir(fd, &lfs, &seg, &ifile);
+	IFILE/CLEANER INFO:
 
-	write_ifile(fd, &lfs, &seg, &ifile);
+	(gdb) p *(struct _cleanerinfo32 *)(bp->b_data)
+	$134 = {clean = 1022, dirty = 1, bfree = 117367, avail = -6, free_head
+	= 3, free_tail = 408, flags = 0}
+	*/
+	assert(pread(fd, block, sizeof(block),
+		SECTOR_TO_BYTES(96)) == sizeof(block));
 
+	cleanerinfo = (struct _cleanerinfo32 *)block;
+	assert(cleanerinfo->clean == 1022);
+	assert(cleanerinfo->dirty == 1);
+	assert(cleanerinfo->free_head == 3);
+	assert(cleanerinfo->free_tail == 408);
+	assert(cleanerinfo->flags == 0);
 
-/*
-bwrite(blkno=208896)
+	/*
+	bwrite(blkno=112)
 
-SUPERBLOCK:
-*/
-	write_superblock(fd, &lfs, (struct segsum32 *)summary_block);
+	IFILE/SEGUSAGE (block 1):
 
+	(gdb) p *(struct segusage *)(bp->b_data)
+	$135 = {su_nbytes = 40960, su_olastmod = 0, su_nsums = 1, su_ninos = 1,
+	su_flags = 7, su_lastmod = 0}
 
+	bwrite(blkno=128)
 
-	write_segment_summary(fd, &lfs, &seg, (char *)summary_block);
+	IFILE/SEGUSAGE (block 2):
+
+	(gdb) p *(struct segusage *)(bp->b_data)
+	$135 = {su_nbytes = 0, su_olastmod = 0, su_nsums = 0, su_ninos = 0,
+	su_flags = 10, su_lastmod = 0}
+
+	bwrite(blkno=144)
+
+	IFILE/SEGUSAGE (block 3):
+
+	(gdb) p *(struct segusage *)(bp->b_data)
+	$135 = {su_nbytes = 0, su_olastmod = 0, su_nsums = 0, su_ninos = 0,
+	su_flags = 10, su_lastmod = 0}
+	*/
+
+	struct segusage segusages[NSEGS];
+	assert(pread(fd, segusages, sizeof(segusages),
+		SECTOR_TO_BYTES(112)) == sizeof(segusages));
+
+	assert(segusages[0].su_nsums == 1);
+	assert(segusages[0].su_ninos == 2);
+	assert(segusages[0].su_nbytes == 40960);
+	assert(segusages[0].su_flags == SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK);
+	assert(segusages[0].su_lastmod == 0);
+	for (i = 1; i < NSEGS; i++) {
+		int found = 0, j;
+		for (j = 1; j < 10; j++) {
+			if (i == (sboffs[j]*8192)/(1024*1024))
+				found = 1;
+		}
+		if (found) {
+			assert(segusages[i].su_flags == SEGUSE_SUPERBLOCK);
+		} else {
+			assert(segusages[i].su_flags == SEGUSE_EMPTY);
+		}
+		assert(segusages[i].su_nsums == 0);
+		assert(segusages[i].su_ninos == 0);
+		assert(segusages[i].su_nbytes == 0);
+		assert(segusages[i].su_lastmod == 0);
+	}
+
+	/*
+	bwrite(blkno=160)
+
+	IFILE/INODE MAP:
+
+	(gdb) p *(IFILE32 (*)[10])(bp->b_data)
+	$155 = {
+	{if_version = 0, if_daddr = 0, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 0, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 4, if_nextfree = 0, if_atime_sec = 0, if_atime_nsec = 0}, <== INODE 2 at BLOCK=4 (lbn=64)
+	{if_version = 1, if_daddr = 0, if_nextfree = 4, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 0, if_nextfree = 5, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 0, if_nextfree = 6, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 0, if_nextfree = 7, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 0, if_nextfree = 8, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 0, if_nextfree = 9, if_atime_sec = 0, if_atime_nsec = 0},
+	{if_version = 1, if_daddr = 0, if_nextfree = 10, if_atime_sec = 0, if_atime_nsec = 0}}
+	*/
+	IFILE32 ifiles[MAX_INODES];
+	assert(sizeof(ifiles) < 8192);
+	assert(pread(fd, ifiles, sizeof(ifiles),
+		SECTOR_TO_BYTES(160)) == sizeof(ifiles));
+
+	assert(ifiles[0].if_version == 0);
+	assert(ifiles[0].if_daddr == 0);
+	assert(ifiles[0].if_nextfree == 0);
+	assert(ifiles[0].if_atime_sec == 0);
+	assert(ifiles[0].if_atime_nsec == 0);
+
+	assert(ifiles[LFS_IFILE_INUM].if_version == 1);
+	assert(ifiles[LFS_IFILE_INUM].if_daddr == 5);
+	assert(ifiles[LFS_IFILE_INUM].if_nextfree == 0);
+	assert(ifiles[LFS_IFILE_INUM].if_atime_sec == 0);
+	assert(ifiles[LFS_IFILE_INUM].if_atime_nsec == 0);
+
+	assert(ifiles[ULFS_ROOTINO].if_version == 1);
+	assert(ifiles[ULFS_ROOTINO].if_daddr == 4);
+	assert(ifiles[ULFS_ROOTINO].if_nextfree == 0);
+	assert(ifiles[ULFS_ROOTINO].if_atime_sec == 0);
+	assert(ifiles[ULFS_ROOTINO].if_atime_nsec == 0);
+
+	for (i = 3; i < MAX_INODES; i++) {
+		assert(ifiles[i].if_version == 1);
+		assert(ifiles[i].if_daddr == LFS_UNUSED_DADDR);
+		assert(ifiles[i].if_nextfree == i + 1);
+		assert(ifiles[i].if_atime_sec == 0);
+		assert(ifiles[i].if_atime_nsec == 0);
+	}
 
 	return 0;
 }
