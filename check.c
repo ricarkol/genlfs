@@ -634,6 +634,10 @@ int main(int argc, char **argv)
 	struct segment seg;
 	struct _ifile ifile;
 	unsigned char summary_block[lfs.dlfs_sumsize];
+	char block[DFL_LFSBLOCK];
+	struct lfs_dirheader32 *dir;
+	struct lfs32_dinode *dinode;
+	int i;
 
 	memset(summary_block, 0, lfs.dlfs_sumsize);
 
@@ -781,16 +785,81 @@ int main(int argc, char **argv)
 		sizeof(struct finfo32) + sizeof(int) +
 		sizeof(struct finfo32) + 5*sizeof(int);
 
+	/*
+	bwrite(blkno=48)
+
+	Data for root directory:
+
+	(gdb) p *(struct lfs_dirheader32 *)(bp->b_data)
+	$53 = {dh_ino = 2, dh_reclen = 12, dh_type = 4 '\004', dh_namlen = 1
+	'\001'} (gdb) printf "%s\n", (char *)(bp->b_data + sizeof(struct
+	lfs_dirheader32))
+	.
+	(gdb) p *(struct lfs_dirheader32 *)(bp->b_data + sizeof(struct
+	lfs_dirheader32) + 4)
+	$55 = {dh_ino = 2, dh_reclen = 500, dh_type = 4 '\004', dh_namlen = 2
+	'\002'} (gdb) printf "%s\n", (char *)(bp->b_data + sizeof(struct
+	lfs_dirheader32) + 4 + sizeof(struct lfs_dirheader32))
+	..
+	*/
+	assert(pread(fd, block, sizeof(block),
+		SECTOR_TO_BYTES(48)) == sizeof(block));
+	/* . */
+	dir = (struct lfs_dirheader32 *)(block);
+	assert(dir->dh_ino == 2);
+	assert(dir->dh_reclen == 12);
+	assert(dir->dh_type == 4);
+	assert(dir->dh_namlen == 1);
+	assert(memcmp((char *)dir + sizeof(struct lfs_dirheader32), ".", 1) == 0);
+	/* .. */
+	dir = (struct lfs_dirheader32 *)(block + sizeof(struct lfs_dirheader32) + 4);
+	assert(dir->dh_ino == 2);
+	assert(dir->dh_reclen == 500);
+	assert(dir->dh_type == 4);
+	assert(dir->dh_namlen == 2);
+	assert(memcmp((char *)dir + sizeof(struct lfs_dirheader32), "..", 2) == 0);
+
+	/*
+	bwrite(blkno=64)
+
+	INODE for root directory:
+
+	(gdb) p *(struct lfs32_dinode *)bp->b_data
+	$60 = {di_mode = 16877, di_nlink = 2, di_inumber = 2, di_size = 512,
+	di_atime = 1534531037, di_atimensec = 0, di_mtime = 1534531037, di_mtimensec =
+	0, di_ctime = 1534531037, di_ctimensec = 0, di_db = {3, 0 <repeats 11 times>},
+	di_ib = {0, 0, 0}, di_flags = 0, di_blocks = 1, di_gen = 1, di_uid = 0, di_gid
+	= 0, di_modrev = 0}
+	*/
+	assert(pread(fd, block, sizeof(block),
+		SECTOR_TO_BYTES(64)) == sizeof(block));
+
+	dinode = (struct lfs32_dinode *)block;
+	assert(dinode->di_mode == 16877);
+	assert(dinode->di_nlink == 2);
+	assert(dinode->di_inumber == ULFS_ROOTINO);
+	assert(dinode->di_size == 512);
+	assert(dinode->di_atime > 1534531037);
+	assert(dinode->di_atimensec == 0);
+	assert(dinode->di_mtime > 1534531037);
+	assert(dinode->di_mtimensec == 0);
+	assert(dinode->di_ctime > 1534531037);
+	assert(dinode->di_ctimensec == 0);
+	assert(dinode->di_db[0] == 3);
+	for (i = 1; i < 12; i++)
+		assert(dinode->di_db[i] == 0);
+	for (i = 0; i < 3; i++)
+		assert(dinode->di_ib[i] == 0);
+	assert(dinode->di_flags == 0);
+	assert(dinode->di_blocks == 1);
+	assert(dinode->di_gen == 1);
+	assert(dinode->di_uid == 0);
+	assert(dinode->di_gid == 0);
+	assert(dinode->di_modrev == 0);
+
 	
 
 	return 0;
-
-	init_ifile(&ifile);
-	init_sboffs(&lfs, &ifile);
-
-	lfs.dlfs_curseg = -1;
-	seg.cur_data_for_cksum = &seg.data_for_cksum[0];
-	start_segment(&lfs, &seg, &ifile, (char *)&summary_block);
 
 	write_empty_root_dir(fd, &lfs, &seg, &ifile);
 
