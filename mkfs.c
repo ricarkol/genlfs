@@ -64,6 +64,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #include "lfs.h"
 #include "lfs_accessors.h"
@@ -74,6 +75,7 @@
 #define HIGHEST_USED_INO ULFS_ROOTINO
 
 u_int32_t lfs_sb_cksum32(struct dlfs *fs);
+u_int32_t cksum(void *str, size_t len);
 
 /* size args */
 #define SIZE		(1024 * 1024 * 1024)
@@ -184,9 +186,9 @@ void segment_add_datasum(struct segment *seg, char *block, int size)
 {
 	int i;
 	for (i = 0; i < size; i += DFL_LFSBLOCK) {
-		/* The final checksum will be done out of the first byte of
-		 * every block */
-		*seg->cur_data_for_cksum = *((int32_t *)&block[i]);
+		/* The final checksum will be done with a sequence of the first
+		 * byte of every block */
+		memcpy(seg->cur_data_for_cksum, &block[i], sizeof(int32_t));
 		seg->cur_data_for_cksum++;
 	}
 }
@@ -233,8 +235,9 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 	}
 
 	if (ifile->segusage[lfs->dlfs_curseg].su_flags & SEGUSE_SUPERBLOCK) {
-		/* The first block is for the superblock of the segment is the
- 		 * superblock (if any). */
+		/* The first block is for the superblock of the segment (if
+		 * any) */
+		segment_add_datasum(seg, (char*)lfs, DFL_LFSBLOCK);
 		advance_log(lfs, 1);
 	}
 
@@ -245,7 +248,6 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 	seg->seg_number = lfs->dlfs_curseg;
 	seg->disk_bno = lfs->dlfs_offset;
 	seg->segsum = (void *)sb;
-	seg->cur_data_for_cksum = &seg->data_for_cksum[0];
 
 	/*
 	 * We create one segment summary per segment. In other words,
@@ -263,7 +265,7 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 
 	seg->fip = (FINFO *)(sb + sizeof(struct segsum32));
 
-	ifile->segusage[lfs->dlfs_curseg].su_flags = SEGUSE_ACTIVE|SEGUSE_DIRTY;
+	ifile->segusage[lfs->dlfs_curseg].su_flags |= SEGUSE_ACTIVE|SEGUSE_DIRTY;
 	/* One seg. summary per segment. */
 	ifile->segusage[lfs->dlfs_curseg].su_nsums = 1;
 
@@ -609,10 +611,15 @@ $155 = {
 void write_segment_summary(int fd, struct dlfs *lfs, struct segment *seg, char *summary_block)
 {
 	char *datap, *dp;
+	size_t sumstart = offsetof(SEGSUM32, ss_datasum);
+	struct segsum32 *ssp;
+	ssp = (struct segsum32 *)seg->segsum;
 
-	((struct segsum32 *)seg->segsum)->ss_create = time(0);
+	assert(summary_block == (char *)ssp);
 
-	//assert(((struct segsum32 *)seg->segsum)->ss_datasum == 33555);
+	ssp->ss_create = time(0);
+	ssp->ss_datasum = cksum(seg->data_for_cksum, (uint64_t)seg->cur_data_for_cksum - (uint64_t)seg->data_for_cksum);
+	ssp->ss_sumsum = cksum((char *)seg->segsum + sumstart, lfs->dlfs_sumsize - sumstart);
 
 	assert(pwrite(fd, summary_block, lfs->dlfs_sumsize,
 		FSBLOCK_TO_BYTES(seg->disk_bno)) == lfs->dlfs_sumsize);
@@ -626,7 +633,9 @@ int main(int argc, char **argv)
 	off_t off;
 	struct segment seg;
 	struct _ifile ifile;
-	char summary_block[lfs.dlfs_sumsize];
+	unsigned char summary_block[lfs.dlfs_sumsize];
+
+	memset(summary_block, 0, lfs.dlfs_sumsize);
 
 	if (argc != 2) {
 		errx(1, "Usage: %s <file/device>", argv[0]);
@@ -646,6 +655,7 @@ int main(int argc, char **argv)
 	init_sboffs(&lfs, &ifile);
 
 	lfs.dlfs_curseg = -1;
+	seg.cur_data_for_cksum = &seg.data_for_cksum[0];
 	start_segment(&lfs, &seg, &ifile, (char *)&summary_block);
 
 	write_empty_root_dir(fd, &lfs, &seg, &ifile);
@@ -734,13 +744,44 @@ $31 = {0, 1, 2, 3, 4}
 	assert(FSBLOCK_TO_BYTES(seg.disk_bno) == SECTOR_TO_BYTES(32));
 	struct finfo32 *finfo1 = (struct finfo32 *)(summary_block +
 		sizeof(struct segsum32));
+	assert(finfo1->fi_nblocks == 1);
+	assert(finfo1->fi_version == 1);
 	assert(finfo1->fi_ino == 2);
+	assert(finfo1->fi_lastlength = 8192);
+	assert(*(summary_block + sizeof(struct segsum32) +
+		sizeof(struct finfo32) + 0*sizeof(int)) == 0);
+
 	struct finfo32 *finfo2 = (struct finfo32 *)(summary_block +
 		sizeof(struct segsum32) + sizeof(struct finfo32) + sizeof(int));
+	assert(finfo2->fi_nblocks == 5);
+	assert(finfo2->fi_version == 1);
 	assert(finfo2->fi_ino == 1);
+	assert(finfo2->fi_lastlength = 8192);
 	assert(*(summary_block + sizeof(struct segsum32) +
 		sizeof(struct finfo32) + sizeof(int) +
-		sizeof(struct finfo32) + sizeof(int) + sizeof(int)) == 2);
+		sizeof(struct finfo32) + 0*sizeof(int)) == 0);
+	assert(*(summary_block + sizeof(struct segsum32) +
+		sizeof(struct finfo32) + sizeof(int) +
+		sizeof(struct finfo32) + 1*sizeof(int)) == 1);
+	assert(*(summary_block + sizeof(struct segsum32) +
+		sizeof(struct finfo32) + sizeof(int) +
+		sizeof(struct finfo32) + 2*sizeof(int)) == 2);
+	assert(*(summary_block + sizeof(struct segsum32) +
+		sizeof(struct finfo32) + sizeof(int) +
+		sizeof(struct finfo32) + 3*sizeof(int)) == 3);
+	assert(*(summary_block + sizeof(struct segsum32) +
+		sizeof(struct finfo32) + sizeof(int) +
+		sizeof(struct finfo32) + 4*sizeof(int)) == 4);
+	assert(*(summary_block + sizeof(struct segsum32) +
+		sizeof(struct finfo32) + sizeof(int) +
+		sizeof(struct finfo32) + 5*sizeof(int)) == 0);
+	assert(*(summary_block + sizeof(struct segsum32) +
+		sizeof(struct finfo32) + sizeof(int) +
+		sizeof(struct finfo32) + 6*sizeof(int)) == 0);
+	size_t end = sizeof(struct segsum32) +
+		sizeof(struct finfo32) + sizeof(int) +
+		sizeof(struct finfo32) + 5*sizeof(int);
+	memset(summary_block + end, 0, 8192 - end);
 
 	write_segment_summary(fd, &lfs, &seg, (char *)summary_block);
 
