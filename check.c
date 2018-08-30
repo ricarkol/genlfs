@@ -104,6 +104,7 @@ u_int32_t cksum(void *str, size_t len);
 #define FSBLOCK_TO_BYTES(_S) (DFL_LFSBLOCK * (_S))
 #define SEGS_TO_FSBLOCKS(_S) (((_S) * DFL_LFSSEG) / DFL_LFSBLOCK)
 
+
 int main(int argc, char **argv)
 {
 	struct dlfs lfs;
@@ -111,7 +112,7 @@ int main(int argc, char **argv)
 	uint32_t avail_segs;
 	off_t off;
 	struct segment seg;
-	unsigned char summary_block[lfs.dlfs_sumsize];
+	unsigned char summary_block[DFL_LFSBLOCK];
 	char block[DFL_LFSBLOCK];
 	struct lfs_dirheader32 *dir;
 	struct lfs32_dinode *dinode;
@@ -120,8 +121,6 @@ int main(int argc, char **argv)
 	int i;
 	int sboffs[] = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392,
 			104448, 117504};
-
-	memset(summary_block, 0, lfs.dlfs_sumsize);
 
 	if (argc != 2) {
 		errx(1, "Usage: %s <file/device>", argv[0]);
@@ -434,7 +433,7 @@ int main(int argc, char **argv)
 	for (i = 1; i < NSEGS; i++) {
 		int found = 0, j;
 		for (j = 1; j < 10; j++) {
-			if (i == (sboffs[j]*8192)/(1024*1024))
+			if (SEGS_TO_FSBLOCKS(i) == sboffs[j])
 				found = 1;
 		}
 		if (found) {
