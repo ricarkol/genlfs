@@ -204,7 +204,7 @@ int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 
 	for (i = 0; i < NSUPERBLOCKS; i++) {
 		lfs->dlfs_cksum = lfs_sb_cksum32(lfs);
-		assert(pwrite(fd, lfs, sizeof(*lfs),
+		assert(pwrite64(fd, lfs, sizeof(*lfs),
 			FSBLOCK_TO_BYTES(lfs->dlfs_sboffs[i])) == sizeof(*lfs));
 		lfs->dlfs_serial++;
 	}
@@ -320,7 +320,7 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 	memset(block, 0, DFL_LFSBLOCK);
 	get_empty_root_dir(block);
 
-	assert(pwrite(fd, block, sizeof(block),
+	assert(pwrite64(fd, block, sizeof(block),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(block));
 	root_bno = lfs->dlfs_offset;
 	assert(root_bno == 3);
@@ -352,7 +352,7 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 		.di_modrev = 0
 	};
 	assert(dinode.di_mode == 16877);
-	assert(pwrite(fd, &dinode, sizeof(dinode), off) == sizeof(dinode));
+	assert(pwrite64(fd, &dinode, sizeof(dinode), off) == sizeof(dinode));
 
 	ifile->ifiles[ULFS_ROOTINO].if_daddr = lfs->dlfs_offset;
 	ifile->ifiles[ULFS_ROOTINO].if_nextfree = 0;
@@ -443,13 +443,15 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	// TODO: check that there are enough blocks in this segment for the ifile
 
 	int nblocks = lfs->dlfs_cleansz + lfs->dlfs_segtabsz + 1;
-	int32_t first_data_bno = lfs->dlfs_offset + 1; /* one after this inode */
+	int32_t first_data_bno;
 	int32_t i, bno;
 
-	/* TODO: implement indirect disk blocks */
-	assert(nblocks <= ULFS_NDADDR);
+	/* TODO: only have single indirect disk blocks */
+	assert(nblocks <= ULFS_NDADDR + 1024);
 
-	struct lfs32_dinode dinode = {
+	/* Write ifile inode */
+
+	struct lfs32_dinode inode = {
 		.di_mode = LFS_IFREG | 0600,
 		.di_nlink = 1,
 		.di_inumber = LFS_IFILE_INUM,
@@ -469,14 +471,25 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 		.di_gid = 0,
 		.di_modrev = 0
 	};
-	for (i = 0, bno = first_data_bno; i < nblocks; i++, bno++)
-		dinode.di_db[i] = bno;
 
-	assert(dinode.di_mode == 33152);
-	assert(dinode.di_flags == 131072);
+	if (nblocks <= ULFS_NDADDR) {
+		/* only direct blocks */
+		first_data_bno = lfs->dlfs_offset + 1;
+		for (i = 0, bno = first_data_bno; i < nblocks; i++, bno++)
+			inode.di_db[i] = bno;
+	} if (nblocks > ULFS_NDADDR) {
+		/* single direct blocks */
+		inode.di_ib[0] = lfs->dlfs_offset + 1;
+		first_data_bno = lfs->dlfs_offset + 2;
+		for (i = 0, bno = first_data_bno; i < ULFS_NDADDR; i++, bno++)
+			inode.di_db[i] = bno;
+	}
 
-	assert(pwrite(fd, &dinode, sizeof(dinode),
-		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(dinode));
+	assert(inode.di_mode == 33152);
+	assert(inode.di_flags == 131072);
+
+	assert(pwrite64(fd, &inode, sizeof(inode),
+		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(inode));
 
 	/* point to ifile inode */
 	lfs->dlfs_idaddr = lfs->dlfs_offset;
@@ -488,9 +501,27 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	ifile->cleanerinfo.free_head++;
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
-	segment_add_datasum(seg, (char *)&dinode, DFL_LFSBLOCK);
+	segment_add_datasum(seg, (char *)&inode, DFL_LFSBLOCK);
 	advance_log(lfs, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
+
+	if (nblocks > ULFS_NDADDR) {
+		int dinode[DFL_LFSBLOCK / sizeof(int)];
+		assert(DFL_LFSBLOCK == sizeof(dinode));
+		memset(dinode, 0, sizeof(dinode));
+		for (i = 0, bno = inode.di_db[ULFS_NDADDR - 1] + 1;
+				i < (nblocks - ULFS_NDADDR);
+				i++, bno++)
+			dinode[i] = bno;
+
+		assert(lfs->dlfs_offset == inode.di_ib[0]);
+		assert(pwrite64(fd, dinode, 8192,
+			FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == 8192);
+
+		segment_add_datasum(seg, (char *)dinode, DFL_LFSBLOCK);
+		advance_log(lfs, 1);
+		ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
+	}
 
 	/* IFILE/CLEANER INFO */
 	ifile->cleanerinfo.clean = lfs->dlfs_nclean;
@@ -498,9 +529,9 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	ifile->cleanerinfo.bfree = lfs->dlfs_bfree;
 	ifile->cleanerinfo.avail = lfs->dlfs_avail;
 	assert(ifile->cleanerinfo.dirty == 1);
-	assert(ifile->cleanerinfo.free_head == 3);
+	//assert(ifile->cleanerinfo.free_head == 3);
 	assert(ifile->cleanerinfo.free_tail == 408);
-	assert(pwrite(fd, &ifile->cleanerinfo, sizeof(ifile->cleanerinfo),
+	assert(pwrite64(fd, &ifile->cleanerinfo, sizeof(ifile->cleanerinfo),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->cleanerinfo));
 
 	segment_add_datasum(seg, (char *)&ifile->cleanerinfo, DFL_LFSBLOCK);
@@ -509,11 +540,11 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 
 	/* IFILE/SEGUSAGE (block 1) */
 	assert(ifile->segusage[lfs->dlfs_curseg].su_nsums == 1);
-	assert(ifile->segusage[lfs->dlfs_curseg].su_ninos == 2);
+	//assert(ifile->segusage[lfs->dlfs_curseg].su_ninos == 2);
 	assert(ifile->segusage[lfs->dlfs_curseg].su_flags == SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK);
 	assert(ifile->segusage[lfs->dlfs_curseg].su_lastmod == 0);
 
-	assert(pwrite(fd, ifile->segusage, sizeof(ifile->segusage),
+	assert(pwrite64(fd, ifile->segusage, sizeof(ifile->segusage),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->segusage));
 
 	segment_add_datasum(seg, (char *)ifile->segusage, lfs->dlfs_segtabsz * DFL_LFSBLOCK);
@@ -521,7 +552,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK * lfs->dlfs_segtabsz;
 
 	/* IFILE/INODE MAP */
-	assert(pwrite(fd, &ifile->ifiles, sizeof(ifile->ifiles),
+	assert(pwrite64(fd, &ifile->ifiles, sizeof(ifile->ifiles),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->ifiles));
 
 	segment_add_datasum(seg, (char *)&ifile->ifiles, DFL_LFSBLOCK);
@@ -556,7 +587,7 @@ void write_segment_summary(int fd, struct dlfs *lfs, struct segment *seg, char *
 	ssp->ss_datasum = cksum(seg->data_for_cksum, (uint64_t)seg->cur_data_for_cksum - (uint64_t)seg->data_for_cksum);
 	ssp->ss_sumsum = cksum((char *)seg->segsum + sumstart, lfs->dlfs_sumsize - sumstart);
 
-	assert(pwrite(fd, summary_block, lfs->dlfs_sumsize,
+	assert(pwrite64(fd, summary_block, lfs->dlfs_sumsize,
 		FSBLOCK_TO_BYTES(seg->disk_bno)) == lfs->dlfs_sumsize);
 }
 
