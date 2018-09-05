@@ -81,9 +81,9 @@ u_int32_t cksum(void *str, size_t len);
 #define NSUPERBLOCKS	LFS_MAXNUMSB
 #define MAX_INODES	(DFL_LFSBLOCK / sizeof(IFILE32))
 
-static uint64_t SIZE = (1024 * 1024 * 1 * 1024ull);
-static uint64_t NSEGS;
-static uint64_t RESVSEG;
+/* globals */
+static uint64_t nbytes = (1024 * 1024 * 1 * 1024ull);
+static uint64_t nsegs;
 
 /*
  * calculate the maximum file size allowed with the specified block shift.
@@ -163,29 +163,30 @@ static const struct dlfs dlfs32_default = {
 struct _ifile {
 	struct _cleanerinfo32 cleanerinfo;
 	SEGUSE *segusage;
-	//struct segusage segusage[NSEGS];
 	IFILE32	ifiles[MAX_INODES];
 };
 
 void init_lfs(struct dlfs *lfs)
 {
-	NSEGS = ((SIZE/DFL_LFSSEG) - 1);
-	RESVSEG = (((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1);
+	uint64_t resvseg;
 
-	lfs->dlfs_size =		SIZE/DFL_LFSBLOCK;
-	lfs->dlfs_dsize =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
+	nsegs = ((nbytes/DFL_LFSSEG) - 1);
+	resvseg = (((nsegs/DFL_MIN_FREE_SEGS) / 2) + 1);
+
+	lfs->dlfs_size = nbytes/DFL_LFSBLOCK;
+	lfs->dlfs_dsize = ((nsegs - nsegs/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
 			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK;
-	lfs->dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK;
-	lfs->dlfs_bfree =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
+	lfs->dlfs_lastseg = (nbytes - 2*DFL_LFSSEG) / DFL_LFSBLOCK;
+	lfs->dlfs_bfree = ((nsegs - nsegs/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
 			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK;
-	lfs->dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
+	lfs->dlfs_avail = SEGS_TO_FSBLOCKS((nbytes/DFL_LFSSEG) - resvseg) -
 				NSUPERBLOCKS;
-	lfs->dlfs_nseg =		NSEGS;
-	lfs->dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
+	lfs->dlfs_nseg = nsegs;
+	lfs->dlfs_segtabsz = (nsegs + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
 				(DFL_LFSBLOCK/sizeof(SEGUSE));
-	lfs->dlfs_nclean =  	NSEGS - 1;
-	lfs->dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS);
-	lfs->dlfs_resvseg =		RESVSEG;
+	lfs->dlfs_nclean = nsegs - 1;
+	lfs->dlfs_minfreeseg = (nsegs/DFL_MIN_FREE_SEGS);
+	lfs->dlfs_resvseg = resvseg;
 }
 
 /* Add a block into the data checksum */
@@ -403,7 +404,7 @@ void init_ifile(struct _ifile *ifile)
 	/* XXX: Artifial limit on max inodes. */
 	assert(sizeof(ifile->ifiles) <= DFL_LFSBLOCK);
 
-	ifile->segusage = malloc(NSEGS * sizeof(SEGUSE));
+	ifile->segusage = malloc(nsegs * sizeof(SEGUSE));
 	assert(ifile->segusage);
 
 	memset(&ifile->ifiles[0], 0, sizeof(IFILE32));
@@ -419,7 +420,7 @@ void init_ifile(struct _ifile *ifile)
 	ifile->cleanerinfo.free_head = 1;
 	ifile->cleanerinfo.free_tail = MAX_INODES - 1;
 
-	for (i = 0; i < NSEGS; i++) {
+	for (i = 0; i < nsegs; i++) {
 		memcpy(&ifile->segusage[i], &empty_segusage,
 			sizeof(empty_segusage));
 	}
@@ -430,10 +431,10 @@ void init_sboffs(struct dlfs *lfs, struct _ifile *ifile)
 	int i, j;
 	int sb_interval;	/* number of segs between super blocks */
 
-	if ((sb_interval = NSEGS / LFS_MAXNUMSB) < LFS_MIN_SBINTERVAL)
+	if ((sb_interval = nsegs / LFS_MAXNUMSB) < LFS_MIN_SBINTERVAL)
 		sb_interval = LFS_MIN_SBINTERVAL;
 
-	for (i = j = 0; i < NSEGS; i++) {
+	for (i = j = 0; i < nsegs; i++) {
 		if (i == 0) {
 			ifile->segusage[i].su_flags = SEGUSE_SUPERBLOCK;
 			lfs->dlfs_sboffs[j] = 1;
@@ -555,8 +556,8 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	assert(ifile->segusage[lfs->dlfs_curseg].su_flags == SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK);
 	assert(ifile->segusage[lfs->dlfs_curseg].su_lastmod == 0);
 
-	assert(pwrite64(fd, ifile->segusage, NSEGS * sizeof(SEGUSE),
-		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == NSEGS * sizeof(SEGUSE));
+	assert(pwrite64(fd, ifile->segusage, nsegs * sizeof(SEGUSE),
+		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == nsegs * sizeof(SEGUSE));
 
 	segment_add_datasum(seg, (char *)ifile->segusage, lfs->dlfs_segtabsz * DFL_LFSBLOCK);
 	advance_log(lfs, lfs->dlfs_segtabsz);
