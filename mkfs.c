@@ -82,7 +82,7 @@ u_int32_t cksum(void *str, size_t len);
 #define MAX_INODES	(DFL_LFSBLOCK / sizeof(IFILE32))
 
 /* globals */
-static uint64_t nbytes = (1024 * 1024 * 32 * 1024ull);
+static uint64_t nbytes = (1024 * 1024 * 1 * 1024ull);
 static uint64_t nsegs;
 
 /*
@@ -461,6 +461,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	assert(nblocks <= ULFS_NDADDR + 1024);
 	assert(MAXFILESIZE32 > nblocks * DFL_LFSBLOCK);
 
+	// TODO: check that there are enough blocks in this segment for the ifile
 	assert(((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + nblocks + 1 + 1) < lfs->dlfs_fsbpseg);
 
 	/* Write ifile inode */
@@ -545,7 +546,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	ifile->cleanerinfo.avail = lfs->dlfs_avail;
 	assert(ifile->cleanerinfo.dirty == 1);
 	assert(ifile->cleanerinfo.free_head == 3);
-	//assert(ifile->cleanerinfo.free_tail == 408);
+	assert(ifile->cleanerinfo.free_tail == 408);
 	assert(pwrite64(fd, &ifile->cleanerinfo, sizeof(ifile->cleanerinfo),
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->cleanerinfo));
 
