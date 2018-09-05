@@ -82,7 +82,7 @@ u_int32_t cksum(void *str, size_t len);
 #define MAX_INODES	(DFL_LFSBLOCK / sizeof(IFILE32))
 
 /* globals */
-static uint64_t nbytes = (1024 * 1024 * 1 * 1024ull);
+static uint64_t nbytes = (1024 * 1024 * 32 * 1024ull);
 static uint64_t nsegs;
 
 /*
