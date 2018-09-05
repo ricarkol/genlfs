@@ -78,12 +78,16 @@ u_int32_t lfs_sb_cksum32(struct dlfs *fs);
 u_int32_t cksum(void *str, size_t len);
 
 /* size args */
-#define SIZE		(1024 * 1024 * 1 * 1024ull)
 #define NSUPERBLOCKS	LFS_MAXNUMSB
 #define MAX_INODES	(DFL_LFSBLOCK / sizeof(IFILE32))
 
+#define SIZE		(1024 * 1024 * 1 * 1024ull)
 #define NSEGS		((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
 #define RESVSEG		(((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1)
+
+//static uint64_t SIZE = (1024 * 1024 * 1 * 1024ull);
+//static uint64_t NSEGS;
+//static uint64_t RESVSEG;
 
 /*
  * calculate the maximum file size allowed with the specified block shift.
@@ -107,10 +111,7 @@ u_int32_t cksum(void *str, size_t len);
 static const struct dlfs dlfs32_default = {
 	.dlfs_magic =		LFS_MAGIC,
 	.dlfs_version =		LFS_VERSION,
-	.dlfs_size =		SIZE/DFL_LFSBLOCK,
 	.dlfs_ssize =		DFL_LFSSEG,
-	.dlfs_dsize =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
-			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK,
 	.dlfs_bsize =		DFL_LFSBLOCK,
 	.dlfs_fsize =		DFL_LFSFRAG,
 	.dlfs_frag =		DFL_LFSBLOCK/DFL_LFSFRAG,
@@ -118,16 +119,11 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_uinodes =		0,
 	.dlfs_idaddr =		0,
 	.dlfs_ifile =		LFS_IFILE_INUM,
-	.dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK,
 	.dlfs_offset =		0,
 	.dlfs_lastpseg =	0,
 	.dlfs_nextseg =		DFL_LFSSEG/DFL_LFSBLOCK,
 	.dlfs_curseg =		0,
-	.dlfs_bfree =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
-			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK,
 	.dlfs_nfiles =		0,
-	.dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
-				NSUPERBLOCKS,
 
 	.dlfs_inopf =		512/sizeof(struct lfs32_dinode),
 	.dlfs_minfree =		MINFREE,
@@ -137,11 +133,8 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_ifpb =		DFL_LFSBLOCK/sizeof(IFILE32),
 	.dlfs_sepb =		DFL_LFSBLOCK/sizeof(SEGUSE),
 	.dlfs_nindir =		DFL_LFSBLOCK/sizeof(int32_t),
-	.dlfs_nseg =		NSEGS,
 	.dlfs_nspf =		0,
 	.dlfs_cleansz =		1,
-	.dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
-				(DFL_LFSBLOCK/sizeof(SEGUSE)),
 	.dlfs_segmask =		DFL_LFSSEG_MASK,
 	.dlfs_segshift =	DFL_LFSSEG_SHIFT,
 	.dlfs_bshift =		DFL_LFSBLOCK_SHIFT,
@@ -154,11 +147,9 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_sushift =		0,
 	.dlfs_maxsymlinklen =	LFS32_MAXSYMLINKLEN,
 	.dlfs_sboffs =		{ 0 },
-	.dlfs_nclean =  	NSEGS - 1,
 	.dlfs_fsmnt =   	{ 0 },
 	.dlfs_pflags =  	LFS_PF_CLEAN,
 	.dlfs_dmeta =		0,
-	.dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS),
 	.dlfs_sumsize =		DFL_LFSFRAG,
 	.dlfs_serial =		0,
 	.dlfs_ibsize =		DFL_LFSFRAG,
@@ -168,7 +159,6 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_interleave =	0,
 	.dlfs_ident =		0,
 	.dlfs_fsbtodb =		LOG2(DFL_LFSBLOCK/512),
-	.dlfs_resvseg =		RESVSEG,
 
 	.dlfs_pad = 		{ 0 },
 	.dlfs_cksum =		0
@@ -176,9 +166,30 @@ static const struct dlfs dlfs32_default = {
 
 struct _ifile {
 	struct _cleanerinfo32 cleanerinfo;
-	SEGUSE	segusage[NSEGS];
+	SEGUSE segusage[NSEGS];
 	IFILE32	ifiles[MAX_INODES];
 };
+
+void init_lfs(struct dlfs *lfs)
+{
+	//NSEGS = ((SIZE/DFL_LFSSEG) - 1);
+	//RESVSEG = (((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1);
+
+	lfs->dlfs_size =		SIZE/DFL_LFSBLOCK;
+	lfs->dlfs_dsize =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
+			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK;
+	lfs->dlfs_lastseg =		(SIZE - 2*DFL_LFSSEG) / DFL_LFSBLOCK;
+	lfs->dlfs_bfree =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
+			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK;
+	lfs->dlfs_avail =		SEGS_TO_FSBLOCKS((SIZE/DFL_LFSSEG) - RESVSEG) -
+				NSUPERBLOCKS;
+	lfs->dlfs_nseg =		NSEGS;
+	lfs->dlfs_segtabsz =	(NSEGS + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
+				(DFL_LFSBLOCK/sizeof(SEGUSE));
+	lfs->dlfs_nclean =  	NSEGS - 1;
+	lfs->dlfs_minfreeseg =	(NSEGS/DFL_MIN_FREE_SEGS);
+	lfs->dlfs_resvseg =		RESVSEG;
+}
 
 /* Add a block into the data checksum */
 void segment_add_datasum(struct segment *seg, char *block, int size)
@@ -391,6 +402,8 @@ void init_ifile(struct _ifile *ifile)
 		.su_lastmod = 0
 	};
 	int i;
+
+	//ifile->segusage = malloc(NSEGS * sizeof(SEGUSE));
 
 	/* XXX: Artifial limit on max inodes. */
 	assert(sizeof(ifile->ifiles) <= DFL_LFSBLOCK);
@@ -609,6 +622,8 @@ int main(int argc, char **argv)
 
 	fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fd != 0);
+
+	init_lfs(&lfs);
 
 	/* XXX: These make things a lot simpler. */
 	assert(DFL_LFSFRAG == DFL_LFSBLOCK);
