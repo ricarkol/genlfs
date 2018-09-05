@@ -81,13 +81,9 @@ u_int32_t cksum(void *str, size_t len);
 #define NSUPERBLOCKS	LFS_MAXNUMSB
 #define MAX_INODES	(DFL_LFSBLOCK / sizeof(IFILE32))
 
-#define SIZE		(1024 * 1024 * 1 * 1024ull)
-#define NSEGS		((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
-#define RESVSEG		(((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1)
-
-//static uint64_t SIZE = (1024 * 1024 * 1 * 1024ull);
-//static uint64_t NSEGS;
-//static uint64_t RESVSEG;
+static uint64_t SIZE = (1024 * 1024 * 1 * 1024ull);
+static uint64_t NSEGS;
+static uint64_t RESVSEG;
 
 /*
  * calculate the maximum file size allowed with the specified block shift.
@@ -173,8 +169,8 @@ struct _ifile {
 
 void init_lfs(struct dlfs *lfs)
 {
-	//NSEGS = ((SIZE/DFL_LFSSEG) - 1);
-	//RESVSEG = (((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1);
+	NSEGS = ((SIZE/DFL_LFSSEG) - 1);
+	RESVSEG = (((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1);
 
 	lfs->dlfs_size =		SIZE/DFL_LFSBLOCK;
 	lfs->dlfs_dsize =	((NSEGS - NSEGS/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
