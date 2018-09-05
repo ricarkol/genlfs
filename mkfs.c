@@ -166,7 +166,8 @@ static const struct dlfs dlfs32_default = {
 
 struct _ifile {
 	struct _cleanerinfo32 cleanerinfo;
-	SEGUSE segusage[NSEGS];
+	SEGUSE *segusage;
+	//struct segusage segusage[NSEGS];
 	IFILE32	ifiles[MAX_INODES];
 };
 
@@ -393,6 +394,7 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 
 void init_ifile(struct _ifile *ifile)
 {
+	int i;
 	struct segusage empty_segusage = {
 		.su_nbytes = 0,
 		.su_olastmod = 0,
@@ -401,12 +403,12 @@ void init_ifile(struct _ifile *ifile)
 		.su_flags = SEGUSE_EMPTY,
 		.su_lastmod = 0
 	};
-	int i;
-
-	//ifile->segusage = malloc(NSEGS * sizeof(SEGUSE));
 
 	/* XXX: Artifial limit on max inodes. */
 	assert(sizeof(ifile->ifiles) <= DFL_LFSBLOCK);
+
+	ifile->segusage = malloc(NSEGS * sizeof(SEGUSE));
+	assert(ifile->segusage);
 
 	memset(&ifile->ifiles[0], 0, sizeof(IFILE32));
 
@@ -557,8 +559,8 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	assert(ifile->segusage[lfs->dlfs_curseg].su_flags == SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK);
 	assert(ifile->segusage[lfs->dlfs_curseg].su_lastmod == 0);
 
-	assert(pwrite64(fd, ifile->segusage, sizeof(ifile->segusage),
-		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->segusage));
+	assert(pwrite64(fd, ifile->segusage, NSEGS * sizeof(SEGUSE),
+		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == NSEGS * sizeof(SEGUSE));
 
 	segment_add_datasum(seg, (char *)ifile->segusage, lfs->dlfs_segtabsz * DFL_LFSBLOCK);
 	advance_log(lfs, lfs->dlfs_segtabsz);
