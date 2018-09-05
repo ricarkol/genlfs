@@ -223,7 +223,7 @@ int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 }
 
 /* Advance the log by nr FS blocks. */
-void advance_log(struct dlfs *lfs, int nr)
+void advance_log(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, int nr)
 {
 	assert(((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + nr) < lfs->dlfs_fsbpseg);
 	lfs->dlfs_offset += nr;
@@ -240,7 +240,7 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 
 	if (lfs->dlfs_curseg == 0) {
 		/* The first block of the first segment is kept empty. */
-		advance_log(lfs, 1);
+		advance_log(lfs, seg, ifile, 1);
 	} else {
 		lfs->dlfs_offset = lfs->dlfs_curseg * lfs->dlfs_fsbpseg;
 	}
@@ -249,7 +249,7 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 		/* The first block is for the superblock of the segment (if
 		 * any) */
 		segment_add_datasum(seg, (char*)lfs, DFL_LFSBLOCK);
-		advance_log(lfs, 1);
+		advance_log(lfs, seg, ifile, 1);
 	}
 
 	seg->fs = (struct lfs*)lfs;
@@ -281,7 +281,7 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 	ifile->segusage[lfs->dlfs_curseg].su_nsums = 1;
 
 	/* Make a hole for the segment summary. */
-	advance_log(lfs, lfs->dlfs_sumsize / DFL_LFSBLOCK);
+	advance_log(lfs, seg, ifile, lfs->dlfs_sumsize / DFL_LFSBLOCK);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += lfs->dlfs_sumsize;
 }
 
@@ -338,7 +338,7 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 	assert(root_bno == 3);
 
 	segment_add_datasum(seg, (char*)block, DFL_LFSBLOCK);
-	advance_log(lfs, 1);
+	advance_log(lfs, seg, ifile, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
 	off = FSBLOCK_TO_BYTES(lfs->dlfs_offset);
@@ -373,7 +373,7 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
 	segment_add_datasum(seg, (char *)&dinode, DFL_LFSBLOCK);
-	advance_log(lfs, 1);
+	advance_log(lfs, seg, ifile, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
 	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
@@ -519,7 +519,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
 	segment_add_datasum(seg, (char *)&inode, DFL_LFSBLOCK);
-	advance_log(lfs, 1);
+	advance_log(lfs, seg, ifile, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
 	if (nblocks > ULFS_NDADDR) {
@@ -537,7 +537,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 			FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == 8192);
 
 		segment_add_datasum(seg, (char *)dinode, DFL_LFSBLOCK);
-		advance_log(lfs, 1);
+		advance_log(lfs, seg, ifile, 1);
 		ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 	}
 
@@ -553,7 +553,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->cleanerinfo));
 
 	segment_add_datasum(seg, (char *)&ifile->cleanerinfo, DFL_LFSBLOCK);
-	advance_log(lfs, lfs->dlfs_cleansz);
+	advance_log(lfs, seg, ifile, lfs->dlfs_cleansz);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK * lfs->dlfs_cleansz;
 
 	/* IFILE/SEGUSAGE (block 1) */
@@ -567,7 +567,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == nsegs * sizeof(SEGUSE));
 
 	segment_add_datasum(seg, (char *)ifile->segusage, lfs->dlfs_segtabsz * DFL_LFSBLOCK);
-	advance_log(lfs, lfs->dlfs_segtabsz);
+	advance_log(lfs, seg, ifile, lfs->dlfs_segtabsz);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK * lfs->dlfs_segtabsz;
 
 	/* IFILE/INODE MAP */
@@ -575,7 +575,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(ifile->ifiles));
 
 	segment_add_datasum(seg, (char *)&ifile->ifiles, DFL_LFSBLOCK);
-	advance_log(lfs, 1);
+	advance_log(lfs, seg, ifile, 1);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 
 	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
