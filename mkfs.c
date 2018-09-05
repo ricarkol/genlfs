@@ -177,6 +177,7 @@ void init_lfs(struct dlfs *lfs)
 	lfs->dlfs_dsize = ((uint64_t)(nsegs - nsegs/DFL_MIN_FREE_SEGS) * (uint64_t)DFL_LFSSEG - 
 			DFL_LFSBLOCK * (uint64_t)NSUPERBLOCKS) / DFL_LFSBLOCK;
 	lfs->dlfs_lastseg = (nbytes - 2*(uint64_t)DFL_LFSSEG) / DFL_LFSBLOCK;
+	/* XXX: when nbyes > 19GBs setting bfree confuses whoever is mounting this */
 	//lfs->dlfs_bfree = ((nsegs - nsegs/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
 	//		DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK;
 	lfs->dlfs_avail = SEGS_TO_FSBLOCKS((nbytes/(uint64_t)DFL_LFSSEG) - resvseg) -
@@ -224,6 +225,7 @@ int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 /* Advance the log by nr FS blocks. */
 void advance_log(struct dlfs *lfs, int nr)
 {
+	assert(((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + nr) < lfs->dlfs_fsbpseg);
 	lfs->dlfs_offset += nr;
 	lfs->dlfs_lastpseg += nr;
 	lfs->dlfs_avail -= nr;
@@ -462,7 +464,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	assert(MAXFILESIZE32 > nblocks * DFL_LFSBLOCK);
 
 	// TODO: check that there are enough blocks in this segment for the ifile
-	assert(((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + nblocks + 1 + 1) < lfs->dlfs_fsbpseg);
+	//assert(((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + nblocks + 1 + 1) < lfs->dlfs_fsbpseg);
 
 	/* Write ifile inode */
 
@@ -634,7 +636,6 @@ int main(int argc, char **argv)
 	assert(lfs.dlfs_fsbpseg > (2 + 6 + 2));
 	assert(lfs.dlfs_fsbpseg < MAX_BLOCKS_PER_SEG);
 	assert(lfs.dlfs_cleansz == 1);
-	//assert(lfs.dlfs_segtabsz == 3);
 
 	init_ifile(&ifile);
 	init_sboffs(&lfs, &ifile);
