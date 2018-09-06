@@ -232,26 +232,6 @@ void _advance_log(struct dlfs *lfs, int nr)
 	lfs->dlfs_bfree -= nr;
 }
 
-/* Advance the log by nr FS blocks. */
-void advance_log_by_one(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile)
-{
-	//assert(((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + nr) < lfs->dlfs_fsbpseg);
-	if (((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + 1) < lfs->dlfs_fsbpseg) {
-		_advance_log(lfs, 1);
-	} else {
-		assert( ((lfs->dlfs_offset + 1) % lfs->dlfs_fsbpseg) == 0 );
-		start_segment(lfs, seg, ifile, (char *)seg->segsum);
-	}
-}
-
-/* Advance the log by nr FS blocks. */
-void advance_log(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, int nr)
-{
-	int i;
-	for (i = 0; i < nr; i++)
-		advance_log_by_one(lfs, seg, ifile);
-}
-
 void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, char *sb)
 {
 	struct segsum32 *segsum = (struct segsum32 *)sb;
@@ -303,6 +283,26 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 	/* Make a hole for the segment summary. */
 	_advance_log(lfs, lfs->dlfs_sumsize / DFL_LFSBLOCK);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += lfs->dlfs_sumsize;
+}
+
+/* Advance the log by nr FS blocks. */
+void advance_log_by_one(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile)
+{
+	//assert(((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + nr) < lfs->dlfs_fsbpseg);
+	if (((lfs->dlfs_offset % lfs->dlfs_fsbpseg) + 1) < lfs->dlfs_fsbpseg) {
+		_advance_log(lfs, 1);
+	} else {
+		assert( ((lfs->dlfs_offset + 1) % lfs->dlfs_fsbpseg) == 0 );
+		start_segment(lfs, seg, ifile, (char *)seg->segsum);
+	}
+}
+
+/* Advance the log by nr FS blocks. */
+void advance_log(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, int nr)
+{
+	int i;
+	for (i = 0; i < nr; i++)
+		advance_log_by_one(lfs, seg, ifile);
 }
 
 void get_empty_root_dir(char *b)
