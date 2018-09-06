@@ -607,8 +607,11 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	/* Write the inode (and indirect block) */
 	assert(pwrite64(fd, &inode, sizeof(inode),
 		FSBLOCK_TO_BYTES(inode_lbn)) == sizeof(inode));
-	assert(pwrite64(fd, dinode, 8192,
-		FSBLOCK_TO_BYTES(indirect_lbn)) == 8192);
+	if (nblocks > ULFS_NDADDR) {
+		/* single indirect blocks */
+		assert(pwrite64(fd, dinode, 8192,
+			FSBLOCK_TO_BYTES(indirect_lbn)) == 8192);
+	}
 
 	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
 	finfo->fi_nblocks = nblocks;
