@@ -532,13 +532,11 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 
 	inode_lbn = lfs->dlfs_offset;
 
-	if (inumber != LFS_IFILE_INUM) {
-		ifile->ifiles[inumber].if_daddr = lfs->dlfs_offset;
-		ifile->ifiles[inumber].if_nextfree = 0;
-		assert(ifile->ifiles[inumber].if_daddr == 5);
-		ifile->cleanerinfo->free_head++;
-		ifile->segusage[lfs->dlfs_curseg].su_ninos++;
-	}
+	ifile->ifiles[inumber].if_daddr = lfs->dlfs_offset;
+	ifile->ifiles[inumber].if_nextfree = 0;
+	assert(ifile->ifiles[inumber].if_daddr == 5);
+	ifile->cleanerinfo->free_head++;
+	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
 	segment_add_datasum(seg, (char *)&inode, DFL_LFSBLOCK);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
@@ -609,8 +607,6 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	ifile->ifiles[LFS_IFILE_INUM].if_daddr = lfs->dlfs_idaddr;
 	ifile->ifiles[LFS_IFILE_INUM].if_nextfree = 0;
 	assert(ifile->ifiles[LFS_IFILE_INUM].if_daddr == 5);
-	ifile->cleanerinfo->free_head++;
-	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
 	/* IFILE/CLEANER INFO */
 	ifile->cleanerinfo->clean = lfs->dlfs_nclean;
@@ -618,13 +614,11 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	ifile->cleanerinfo->bfree = lfs->dlfs_bfree;
 	ifile->cleanerinfo->avail = lfs->dlfs_avail;
 	assert(ifile->cleanerinfo->dirty == 1);
-	assert(ifile->cleanerinfo->free_head == 3);
 	assert(ifile->cleanerinfo->free_tail == 408);
 	assert(lfs->dlfs_cleansz == 1);
 
 	/* IFILE/SEGUSAGE (block 1) */
 	assert(ifile->segusage[lfs->dlfs_curseg].su_nsums == 1);
-	assert(ifile->segusage[lfs->dlfs_curseg].su_ninos == 2);
 	assert(ifile->segusage[lfs->dlfs_curseg].su_flags == SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK);
 	assert(ifile->segusage[lfs->dlfs_curseg].su_lastmod == 0);
 	assert((nsegs * sizeof(SEGUSE)) < (lfs->dlfs_segtabsz * DFL_LFSBLOCK));
