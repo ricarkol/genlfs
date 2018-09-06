@@ -484,9 +484,9 @@ void init_sboffs(struct dlfs *lfs, struct _ifile *ifile)
 	}
 }
 
-void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile)
+void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
+		char *data, int nblocks, int inumber)
 {
-	int nblocks = lfs->dlfs_cleansz + lfs->dlfs_segtabsz + 1;
 	int32_t first_data_bno;
 	int32_t i, bno;
 	off_t inode_lbn, indirect_lbn;
@@ -501,7 +501,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	struct lfs32_dinode inode = {
 		.di_mode = LFS_IFREG | 0600,
 		.di_nlink = 1,
-		.di_inumber = LFS_IFILE_INUM,
+		.di_inumber = inumber,
 		.di_size = nblocks * DFL_LFSBLOCK,
 		.di_atime = time(0),
 		.di_atimensec = 0,
@@ -531,18 +531,14 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	assert(inode.di_flags == 131072);
 
 	inode_lbn = lfs->dlfs_offset;
-	//assert(pwrite64(fd, &inode, sizeof(inode),
-	//	FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(inode));
 
-	/* point to ifile inode */
-	lfs->dlfs_idaddr = lfs->dlfs_offset;
-	assert(lfs->dlfs_idaddr == 5);
-
-	ifile->ifiles[LFS_IFILE_INUM].if_daddr = lfs->dlfs_idaddr;
-	ifile->ifiles[LFS_IFILE_INUM].if_nextfree = 0;
-	assert(ifile->ifiles[LFS_IFILE_INUM].if_daddr == 5);
-	ifile->cleanerinfo->free_head++;
-	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
+	if (inumber != LFS_IFILE_INUM) {
+		ifile->ifiles[inumber].if_daddr = lfs->dlfs_idaddr;
+		ifile->ifiles[inumber].if_nextfree = 0;
+		assert(ifile->ifiles[inumber].if_daddr == 5);
+		ifile->cleanerinfo->free_head++;
+		ifile->segusage[lfs->dlfs_curseg].su_ninos++;
+	}
 
 	segment_add_datasum(seg, (char *)&inode, DFL_LFSBLOCK);
 	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
@@ -610,7 +606,7 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
 	finfo->fi_nblocks = nblocks;
 	finfo->fi_version = 1;
-	finfo->fi_ino = LFS_IFILE_INUM;
+	finfo->fi_ino = inumber;
 	finfo->fi_lastlength = DFL_LFSBLOCK;
 	seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(struct finfo32));
 	IINFO32 *blocks = (IINFO32 *)seg->fip;
@@ -620,6 +616,22 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 	}
 	((struct segsum32 *)seg->segsum)->ss_ninos++;
 	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
+}
+
+void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile)
+{
+	int nblocks = lfs->dlfs_cleansz + lfs->dlfs_segtabsz + 1;
+
+	/* point to ifile inode */
+	lfs->dlfs_idaddr = lfs->dlfs_offset;
+	assert(lfs->dlfs_idaddr == 5);
+	ifile->ifiles[LFS_IFILE_INUM].if_daddr = lfs->dlfs_idaddr;
+	ifile->ifiles[LFS_IFILE_INUM].if_nextfree = 0;
+	assert(ifile->ifiles[LFS_IFILE_INUM].if_daddr == 5);
+	ifile->cleanerinfo->free_head++;
+	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
+
+	write_file(fd, lfs, seg, ifile, ifile->data, nblocks, LFS_IFILE_INUM);
 }
 
 void write_segment_summary(int fd, struct dlfs *lfs, struct segment *seg, char *summary_block)
