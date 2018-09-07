@@ -343,7 +343,7 @@ void get_empty_root_dir(char *b)
 }
 
 void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
-		char *data, int nblocks, int inumber,
+		char *data, uint32_t nblocks, uint64_t size, int inumber,
 		int mode, int nlink, int flags);
 
 /*
@@ -361,67 +361,9 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 	memset(block, 0, DFL_LFSBLOCK);
 	get_empty_root_dir(block);
 	
-	//write_file(fd, lfs, seg, ifile, block, 1, ULFS_ROOTINO,
-	//	LFS_IFDIR | 0755, 2, 0);
-
-	assert(pwrite64(fd, block, sizeof(block),
-		FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == sizeof(block));
-	root_bno = lfs->dlfs_offset;
-	assert(root_bno == 3);
-
-	segment_add_datasum(seg, (char*)block, DFL_LFSBLOCK);
-	advance_log(lfs, seg, ifile, 1);
-	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
-
-	off = FSBLOCK_TO_BYTES(lfs->dlfs_offset);
-	assert(off == SECTOR_TO_BYTES(64));
-	struct lfs32_dinode dinode = {
-		.di_mode = LFS_IFDIR | 0755,
-		.di_nlink = 2,
-		.di_inumber = ULFS_ROOTINO,
-		.di_size = 512,
-		.di_atime = time(0),
-		.di_atimensec = 0,
-		.di_mtime = time(0),
-		.di_mtimensec = 0,
-		.di_ctime = time(0),
-		.di_ctimensec = 0,
-		.di_db = {root_bno, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		.di_ib = {0, 0, 0},
-		.di_flags = 0,
-		.di_blocks = 1,
-		.di_gen = 1,
-		.di_uid = 0,
-		.di_gid = 0,
-		.di_modrev = 0
-	};
-	assert(dinode.di_mode == 16877);
-	assert(pwrite64(fd, &dinode, sizeof(dinode), off) == sizeof(dinode));
-
-	ifile->ifiles[ULFS_ROOTINO].if_daddr = lfs->dlfs_offset;
-	ifile->ifiles[ULFS_ROOTINO].if_nextfree = 0;
-	assert(ifile->ifiles[ULFS_ROOTINO].if_daddr == 4);
-	ifile->cleanerinfo->free_head++;
-	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
-
-	segment_add_datasum(seg, (char *)&dinode, DFL_LFSBLOCK);
-	advance_log(lfs, seg, ifile, 1);
-	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
-
-	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
-	finfo->fi_nblocks = 1;
-	finfo->fi_version = 1;
-	finfo->fi_ino = ULFS_ROOTINO;
-	finfo->fi_lastlength = DFL_LFSBLOCK;
-	seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(struct finfo32));
-	IINFO32 *blocks = (IINFO32 *)seg->fip;
-	int i;
-	for (i = 0; i < finfo->fi_nblocks; i++) {
-		blocks[i].ii_block = i;
-		seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(IINFO32));
-	}
-	((struct segsum32 *)seg->segsum)->ss_ninos++;
-	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
+	assert(lfs->dlfs_offset == 3);
+	write_file(fd, lfs, seg, ifile, block, 1, 512, ULFS_ROOTINO,
+		LFS_IFDIR | 0755, 2, 0);
 }
 
 void init_ifile(struct dlfs *lfs, struct _ifile *ifile)
@@ -437,7 +379,7 @@ void init_ifile(struct dlfs *lfs, struct _ifile *ifile)
 	};
 
 	/* XXX: Artifial limit on max inodes. */
-	//assert(sizeof(ifile->ifiles) <= DFL_LFSBLOCK);
+	assert(sizeof(ifile->ifiles) <= DFL_LFSBLOCK);
 
 	int nblocks = lfs->dlfs_cleansz + lfs->dlfs_segtabsz + IFILE_MAP_SZ;
 	ifile->data = malloc(nblocks * DFL_LFSBLOCK);
@@ -491,11 +433,11 @@ void init_sboffs(struct dlfs *lfs, struct _ifile *ifile)
 }
 
 void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
-		char *data, int nblocks, int inumber,
+		char *data, uint32_t nblocks, uint64_t size, int inumber,
 		int mode, int nlink, int flags)
 {
 	int32_t first_data_bno;
-	int32_t i, bno;
+	uint32_t i, bno;
 	off_t inode_lbn, indirect_lbn;
 	int dinode[DFL_LFSBLOCK / sizeof(int)];
 	int db_idx = 0;
@@ -523,7 +465,7 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 		.di_mode = mode,
 		.di_nlink = nlink,
 		.di_inumber = inumber,
-		.di_size = nblocks * DFL_LFSBLOCK,
+		.di_size = size,
 		.di_atime = time(0),
 		.di_atimensec = 0,
 		.di_mtime = time(0),
@@ -582,7 +524,7 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 	}
 
 	for (i = 0; i < nblocks; i++) {
-		char *curr_blk = ifile->data + (DFL_LFSBLOCK * i);
+		char *curr_blk = data + (DFL_LFSBLOCK * i);
 		segment_add_datasum(seg, curr_blk, DFL_LFSBLOCK);
 		assert(pwrite64(fd, curr_blk, DFL_LFSBLOCK,
 			FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == DFL_LFSBLOCK);
@@ -640,7 +582,8 @@ void write_ifile(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *i
 
 	/* IFILE/INODE MAP */
 
-	write_file(fd, lfs, seg, ifile, ifile->data, nblocks, LFS_IFILE_INUM,
+	write_file(fd, lfs, seg, ifile, ifile->data,
+			nblocks, nblocks * DFL_LFSBLOCK, LFS_IFILE_INUM,
 			LFS_IFREG | 0600, 1, SF_IMMUTABLE);
 }
 
