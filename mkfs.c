@@ -341,7 +341,7 @@ void get_empty_root_dir(char *b)
 }
 
 void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
-		char *data, uint32_t nblocks, uint64_t size, int inumber,
+		char *data, uint64_t size, int inumber,
 		int mode, int nlink, int flags);
 
 /*
@@ -360,7 +360,7 @@ void write_empty_root_dir(int fd, struct dlfs *lfs, struct segment *seg, struct 
 	get_empty_root_dir(block);
 	
 	assert(lfs->dlfs_offset == 3);
-	write_file(fd, lfs, seg, ifile, block, 1, 512, ULFS_ROOTINO,
+	write_file(fd, lfs, seg, ifile, block, 512, ULFS_ROOTINO,
 		LFS_IFDIR | 0755, 2, 0);
 }
 
@@ -430,16 +430,16 @@ void init_sboffs(struct dlfs *lfs, struct _ifile *ifile)
 	}
 }
 
-void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
-		char *data, uint32_t nblocks, uint64_t size, int inumber,
-		int mode, int nlink, int flags)
+void add_finfo_inode(struct segment *seg, uint64_t size, int inumber)
 {
-	int32_t first_data_bno;
-	uint32_t i, bno;
-	off_t inode_lbn, indirect_lbn;
-	int indirect_blk[DFL_LFSBLOCK / sizeof(int)];
-
+	uint32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
+	uint32_t lastlength = size % DFL_LFSBLOCK == 0 ?
+				DFL_LFSBLOCK : size % DFL_LFSBLOCK;
 	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
+	uint32_t i;
+
+	assert(size > 0);
+
 	finfo->fi_nblocks = nblocks;
 	finfo->fi_version = 1;
 	finfo->fi_ino = inumber;
@@ -452,6 +452,19 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 	}
 	((struct segsum32 *)seg->segsum)->ss_ninos++;
 	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
+}
+
+void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
+		char *data, uint64_t size, int inumber,
+		int mode, int nlink, int flags)
+{
+	uint32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
+	int32_t first_data_bno;
+	uint32_t i, bno;
+	off_t inode_lbn, indirect_lbn;
+	int indirect_blk[DFL_LFSBLOCK / sizeof(int)];
+
+	add_finfo_inode(seg, size, inumber);
 
 	/* TODO: only support single indirect disk blocks */
 	assert(nblocks <= ULFS_NDADDR + NPTR32);
@@ -560,19 +573,7 @@ void write_ifile_content(int fd, struct dlfs *lfs, struct segment *seg, struct _
 	char *data = ifile->data;
 	int inumber = LFS_IFILE_INUM;
 
-	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
-	finfo->fi_nblocks = nblocks;
-	finfo->fi_version = 1;
-	finfo->fi_ino = inumber;
-	finfo->fi_lastlength = DFL_LFSBLOCK;
-	seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(struct finfo32));
-	IINFO32 *blocks = (IINFO32 *)seg->fip;
-	for (i = 0; i < finfo->fi_nblocks; i++) {
-		blocks[i].ii_block = i;
-		seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(IINFO32));
-	}
-	((struct segsum32 *)seg->segsum)->ss_ninos++;
-	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
+	add_finfo_inode(seg, nblocks * DFL_LFSBLOCK, inumber);
 
 	/* TODO: only have single indirect disk blocks */
 	assert(nblocks <= ULFS_NDADDR + 1024);
