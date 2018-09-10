@@ -83,7 +83,7 @@ u_int32_t cksum(void *str, size_t len);
 #define MAX_INODES	((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32))
 
 /* globals */
-static uint64_t nbytes = (1024 * 1024 * 1 * 1024ull);
+static uint64_t nbytes = (1024 * 1024 * 32 * 1024ull);
 static uint64_t nsegs;
 
 /*
@@ -216,8 +216,6 @@ int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 
 	ninos = (segsum->ss_ninos + lfs->dlfs_inopb - 1) / lfs->dlfs_inopb;
 	lfs->dlfs_dmeta += (lfs->dlfs_sumsize + ninos * lfs->dlfs_ibsize) / DFL_LFSBLOCK;
-
-	assert(lfs->dlfs_dmeta == 2);
 
 	for (i = 0; i < NSUPERBLOCKS; i++) {
 		lfs->dlfs_cksum = lfs_sb_cksum32(lfs);
@@ -505,13 +503,14 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 		segment_add_datasum(seg, curr_blk, DFL_LFSBLOCK);
 		assert(pwrite64(fd, curr_blk, DFL_LFSBLOCK,
 			FSBLOCK_TO_BYTES(lfs->dlfs_offset)) == DFL_LFSBLOCK);
-		if (i < ULFS_NDADDR) {
+		if	(i < ULFS_NDADDR) {
 			/* direct blocks */
 			inode.di_db[i] = lfs->dlfs_offset;
-		} else {
+		} else if ((ULFS_NDADDR <= i) && (i < (NPTR32 + ULFS_NDADDR))) {
 			/* single indirect blocks */
 			indirect_blk[i - ULFS_NDADDR] = lfs->dlfs_offset;
-		}
+		} else
+			assert(0);
 		ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 		advance_log(lfs, seg, ifile, 1);
 	}
