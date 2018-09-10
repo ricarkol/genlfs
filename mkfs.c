@@ -496,6 +496,7 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 			/* single indirect blocks */
 			inode.di_ib[0] = lfs->dlfs_offset;
 			indirect_lbn = lfs->dlfs_offset;
+			advance_log(lfs, seg, ifile, 1);
 		}
 	}
 
@@ -529,9 +530,9 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 	assert(pwrite64(fd, &inode, sizeof(inode),
 		FSBLOCK_TO_BYTES(inode_lbn)) == sizeof(inode));
 	if (nblocks > ULFS_NDADDR) {
-		/* single indirect blocks */
-		assert(pwrite64(fd, indirect_blk, 8192,
-			FSBLOCK_TO_BYTES(indirect_lbn)) == 8192);
+		/* single indirect block */
+		assert(pwrite64(fd, indirect_blk, DFL_LFSBLOCK,
+			FSBLOCK_TO_BYTES(indirect_lbn)) == DFL_LFSBLOCK);
 	}
 }
 
