@@ -495,22 +495,6 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 	ifile->cleanerinfo->free_head++;
 	ifile->segusage[lfs->dlfs_curseg].su_ninos++;
 
-	if (inumber == LFS_IFILE_INUM) {
-		ifile->ifiles[inumber].if_daddr = lfs->dlfs_offset;
-		ifile->ifiles[inumber].if_nextfree = 0;
-		inode_lbn = lfs->dlfs_offset;
-		segment_add_datasum(seg, (char *)&inode, DFL_LFSBLOCK);
-		ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
-		advance_log(lfs, seg, ifile, 1);
-
-		if (nblocks > ULFS_NDADDR) {
-			/* single indirect blocks */
-			inode.di_ib[0] = lfs->dlfs_offset;
-			indirect_lbn = lfs->dlfs_offset;
-			advance_log(lfs, seg, ifile, 1);
-		}
-	}
-
 	int level;
 	int *indexes = inode.di_db;
 	for (i = 0, level = 0; i < nblocks; i++) {
@@ -543,15 +527,13 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 		advance_log(lfs, seg, ifile, 1);
 	}
 
-	if (inumber != LFS_IFILE_INUM) {
-		inode_lbn = lfs->dlfs_offset;
-		ifile->ifiles[inumber].if_daddr = lfs->dlfs_offset;
-		ifile->ifiles[inumber].if_nextfree = 0;
-		segment_add_datasum(seg, (char *)&inode, DFL_LFSBLOCK);
-		ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
-		advance_log(lfs, seg, ifile, 1);
-		indirect_lbn = lfs->dlfs_offset;
-	}
+	inode_lbn = lfs->dlfs_offset;
+	ifile->ifiles[inumber].if_daddr = lfs->dlfs_offset;
+	ifile->ifiles[inumber].if_nextfree = 0;
+	segment_add_datasum(seg, (char *)&inode, DFL_LFSBLOCK);
+	ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
+	advance_log(lfs, seg, ifile, 1);
+	indirect_lbn = lfs->dlfs_offset;
 
 	/* Write the inode (and indirect block) */
 	assert(pwrite64(fd, &inode, sizeof(inode),
