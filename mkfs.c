@@ -454,6 +454,26 @@ void add_finfo_inode(struct segment *seg, uint64_t size, int inumber)
 	((struct segsum32 *)seg->segsum)->ss_nfinfo++;
 }
 
+#define DIV_UP(_x, _y) (((_x) + (_y) - 1) / (_y))
+
+/* Calculate the number of indirect blocks for a file of size (size) */
+uint32_t get_blk_ptrs_nblocks(uint32_t nblocks)
+{
+	uint32_t res = 1;
+	nblocks -= ULFS_NDADDR;
+
+	if (nblocks > (NPTR32 * NPTR32 * NPTR32))
+		res += DIV_UP(nblocks, NPTR32 * NPTR32 * NPTR32);
+	if (nblocks > (NPTR32 * NPTR32))
+		res += DIV_UP(nblocks, NPTR32 * NPTR32);
+	if (nblocks > (NPTR32))
+		res += DIV_UP(nblocks, NPTR32);
+	if (nblocks > 0)
+		res += 1;
+
+	return res;
+}
+
 void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
 		char *data, uint64_t size, int inumber,
 		int mode, int nlink, int flags)
@@ -463,6 +483,9 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 	uint32_t i, bno;
 	off_t inode_lbn, indirect_lbn;
 	int indirect_blk[DFL_LFSBLOCK / sizeof(int)];
+
+	int *blk_ptrs = malloc(get_blk_ptrs_nblocks(nblocks) * DFL_LFSBLOCK);
+	assert(blk_ptrs);
 
 	add_finfo_inode(seg, size, inumber);
 
@@ -543,6 +566,8 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 		assert(pwrite64(fd, indirect_blk, DFL_LFSBLOCK,
 			FSBLOCK_TO_BYTES(indirect_lbn)) == DFL_LFSBLOCK);
 	}
+
+	free(blk_ptrs);
 }
 
 void write_ifile_content(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
