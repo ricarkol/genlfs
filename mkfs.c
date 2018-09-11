@@ -508,7 +508,8 @@ int write_double_indirect(int fd, struct dlfs *lfs, struct segment *seg,
 	for (i = 0; nblocks > 0; i++) {
 		uint32_t _nblocks = MIN(nblocks, NPTR32);
 		assert(i < NPTR32);
-		iblks[i] = write_single_indirect(fd, lfs, seg, ifile, blk_ptrs, _nblocks);
+		iblks[i] = write_single_indirect(fd, lfs, seg, ifile,
+						blk_ptrs, _nblocks);
 		nblocks -= _nblocks;
 		blk_ptrs += _nblocks;
 	}
@@ -540,7 +541,8 @@ int write_triple_indirect(int fd, struct dlfs *lfs, struct segment *seg,
 	for (i = 0; nblocks > 0; i++) {
 		uint32_t _nblocks = MIN(nblocks, NPTR32 * NPTR32);
 		assert(i < NPTR32);
-		iblks[i] = write_double_indirect(fd, lfs, seg, ifile, blk_ptrs, _nblocks);
+		iblks[i] = write_double_indirect(fd, lfs, seg, ifile,
+						blk_ptrs, _nblocks);
 		nblocks -= _nblocks;
 		blk_ptrs += _nblocks;
 	}
@@ -607,8 +609,7 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 		if (i < ULFS_NDADDR)
 			inode.di_db[i] = lfs->dlfs_offset;
 		else {
-			uint32_t idx = i - ULFS_NDADDR;
-			indirect_blks[idx] = lfs->dlfs_offset;
+			indirect_blks[i - ULFS_NDADDR] = lfs->dlfs_offset;
 		}
 		ifile->segusage[lfs->dlfs_curseg].su_nbytes += DFL_LFSBLOCK;
 		advance_log(lfs, seg, ifile, 1);
@@ -619,21 +620,24 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 
         if (nblocks > 0) {
                 uint32_t _nblocks = MIN(nblocks, NPTR32);
-                inode.di_ib[0] = write_single_indirect(fd, lfs, seg, ifile, blk_ptrs, _nblocks);
+                inode.di_ib[0] = write_single_indirect(fd, lfs, seg, ifile,
+							blk_ptrs, _nblocks);
                 nblocks -= _nblocks;
                 blk_ptrs += _nblocks;
         }
 
         if (nblocks > 0) {
                 uint32_t _nblocks = MIN(nblocks, NPTR32 * NPTR32);
-                inode.di_ib[1] = write_double_indirect(fd, lfs, seg, ifile, blk_ptrs, _nblocks);
+                inode.di_ib[1] = write_double_indirect(fd, lfs, seg, ifile,
+							blk_ptrs, _nblocks);
                 nblocks -= _nblocks;
                 blk_ptrs += _nblocks;
         }
 
         if (nblocks > 0) {
                 uint32_t _nblocks = MIN(nblocks, NPTR32 * NPTR32 * NPTR32);
-                inode.di_ib[2] = write_triple_indirect(fd, lfs, seg, ifile, blk_ptrs, _nblocks);
+                inode.di_ib[2] = write_triple_indirect(fd, lfs, seg, ifile,
+							blk_ptrs, _nblocks);
                 nblocks -= _nblocks;
                 blk_ptrs += _nblocks;
         }
