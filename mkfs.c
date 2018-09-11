@@ -312,35 +312,32 @@ void advance_log(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, ui
 		advance_log_by_one(lfs, seg, ifile);
 }
 
+/*
+ * Sets b (in memory) with the inodes for a . and .. directories.
+ */
 void get_empty_root_dir(char *b)
 {
-	{
-	struct lfs_dirheader32 dir = {
-		.dh_ino = 2,
+	struct lfs_dirheader32 dot = {
+		.dh_ino = ULFS_ROOTINO,
 		.dh_reclen = 12,
 		.dh_type = 4,
 		.dh_namlen = 1
 	};
-	memcpy(b, &dir, sizeof(dir));
-	b += sizeof(dir);
-	char buf[] = ".";
-	memcpy(b, &buf, 1);
+	memcpy(b, &dot, sizeof(dot));
+	b += sizeof(dot);
+	memcpy(b, ".", 1);
 	b += 4;
-	}
 
-	{
-	struct lfs_dirheader32 dir = {
-		.dh_ino = 2,
+	struct lfs_dirheader32 dotdot = {
+		.dh_ino = ULFS_ROOTINO,
 		.dh_reclen = 500,
 		.dh_type = 4,
 		.dh_namlen = 2
 	};
-	memcpy(b, &dir, sizeof(dir));
-	b += sizeof(dir);
-	char buf[] = "..";
-	memcpy(b, &buf, 2);
+	memcpy(b, &dotdot, sizeof(dotdot));
+	b += sizeof(dotdot);
+	memcpy(b, "..", 2);
 	b += 4;
-	}
 }
 
 void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *ifile,
