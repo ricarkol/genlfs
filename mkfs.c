@@ -222,7 +222,6 @@ void segment_add_datasum(struct segment *seg, char *block, uint32_t size)
 int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 {
 	uint32_t i;
-	uint32_t ninos;
 
 	for (i = 0; i < NSUPERBLOCKS; i++) {
 		lfs->dlfs_cksum = lfs_sb_cksum32(lfs);
