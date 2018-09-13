@@ -108,6 +108,8 @@ static uint64_t nsegs;
 #define DIV_UP(_x, _y) (((_x) + (_y) - 1) / (_y))
 #define MIN(_x, _y) (((_x) < (_y)) ? (_x) : (_y))
 
+int fd;
+
 static const struct dlfs dlfs32_default = {
 	.dlfs_magic =		LFS_MAGIC,
 	.dlfs_version =		LFS_VERSION,
@@ -165,7 +167,10 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_cksum =		0
 };
 
-static int fd;
+/* In memory representation of the LFS */
+struct fs {
+	
+};
 
 struct _ifile {
 	/*
@@ -219,9 +224,6 @@ int write_superblock(int fd, struct dlfs *lfs, struct segsum32 *segsum)
 	uint32_t i;
 	uint32_t ninos;
 
-	//ninos = (segsum->ss_ninos + lfs->dlfs_inopb - 1) / lfs->dlfs_inopb;
-	//lfs->dlfs_dmeta += (lfs->dlfs_sumsize + ninos * lfs->dlfs_ibsize) / DFL_LFSBLOCK;
-	lfs->dlfs_dmeta = 5;
 	for (i = 0; i < NSUPERBLOCKS; i++) {
 		lfs->dlfs_cksum = lfs_sb_cksum32(lfs);
 		assert(pwrite64(fd, lfs, sizeof(*lfs),
@@ -290,6 +292,7 @@ void start_segment(struct dlfs *lfs, struct segment *seg, struct _ifile *ifile, 
 	/* Make a hole for the segment summary. */
 	_advance_log(lfs, 1);
 	ifile->segusage[seg->seg_number].su_nbytes += lfs->dlfs_sumsize;
+	lfs->dlfs_dmeta++;
 
 	assert(lfs->dlfs_offset >= lfs->dlfs_curseg);
 }
@@ -589,6 +592,8 @@ void write_file(int fd, struct dlfs *lfs, struct segment *seg, struct _ifile *if
 	assert(indirect_blks);
 
 	add_finfo_inode(seg, size, inumber);
+	assert(lfs->dlfs_inopb == 1);
+	lfs->dlfs_dmeta++;
 
 	assert(MAXFILESIZE32 > nblocks * DFL_LFSBLOCK);
 
@@ -685,6 +690,8 @@ void write_ifile_content(int fd, struct dlfs *lfs, struct segment *seg,
 	int inumber = LFS_IFILE_INUM;
 
 	add_finfo_inode(seg, nblocks * DFL_LFSBLOCK, inumber);
+	assert(lfs->dlfs_inopb == 1);
+	lfs->dlfs_dmeta++;
 
 	/* TODO: only have single indirect disk blocks */
 	assert(nblocks <= ULFS_NDADDR + NPTR32);
