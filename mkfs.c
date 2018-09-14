@@ -151,7 +151,7 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_fsmnt =   	{ 0 },
 	.dlfs_pflags =  	LFS_PF_CLEAN,
 	.dlfs_dmeta =		0,
-	.dlfs_sumsize =		DFL_LFSFRAG*4,
+	.dlfs_sumsize =		DFL_LFSFRAG,
 	.dlfs_serial =		0,
 	.dlfs_ibsize =		DFL_LFSFRAG,
 	.dlfs_s0addr =		0,
@@ -365,7 +365,7 @@ void get_empty_root_dir(char *b)
 
 	struct lfs_dirheader32 dotdot = {
 		.dh_ino = ULFS_ROOTINO,
-		.dh_reclen = 12,
+		.dh_reclen = 500,
 		.dh_type = 4,
 		.dh_namlen = 2
 	};
@@ -373,7 +373,7 @@ void get_empty_root_dir(char *b)
 	b += sizeof(dotdot);
 	memcpy(b, "..", 2);
 	b += 4;
-
+/*
 	struct lfs_dirheader32 ifile = {
 		.dh_ino = 3,
 		.dh_reclen = 512 - 24,
@@ -384,6 +384,7 @@ void get_empty_root_dir(char *b)
 	b += sizeof(ifile);
 	strcpy(b, "aaaaaaaaaaaaaaax");
 	b += strlen("aaaaaaaaaaaaaaax");
+*/
 }
 
 void write_file(struct fs *fs, struct _ifile *ifile,
@@ -869,8 +870,8 @@ int main(int argc, char **argv)
 	memset(block, '.', FSIZE);
 
 	block[FSIZE - 100] = '\n';
-	write_file(&fs, &ifile, block,
-			FSIZE, 3, LFS_IFREG | 0777, 1, 0);
+	//write_file(&fs, &ifile, block,
+	//		FSIZE, 3, LFS_IFREG | 0777, 1, 0);
 
 	write_ifile(&fs, &ifile);
 

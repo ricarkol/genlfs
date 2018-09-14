@@ -167,7 +167,7 @@ int main(int argc, char **argv)
 	assert(lfs.dlfs_size == 131072);
 	assert(lfs.dlfs_dsize == 117878);
 	assert(lfs.dlfs_lastseg == 130816);
-	assert(lfs.dlfs_inopf == 4);
+	assert(lfs.dlfs_inopf == 1);
 	assert(lfs.dlfs_maxfilesize == 70403120791552);
 	assert(lfs.dlfs_fsbpseg == 128);
 	assert(lfs.dlfs_minfreeseg == 102);
