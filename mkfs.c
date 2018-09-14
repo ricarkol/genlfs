@@ -108,6 +108,31 @@ static uint64_t nsegs;
 #define DIV_UP(_x, _y) (((_x) + (_y) - 1) / (_y))
 #define MIN(_x, _y) (((_x) < (_y)) ? (_x) : (_y))
 
+struct _ifile {
+	/*
+	 * data holds all the data and cleanerinfo. segusage, and ifiles just
+	 * point to it.
+	 */
+	char		*data;
+	struct _cleanerinfo32 *cleanerinfo;
+	SEGUSE		*segusage;
+	IFILE32		*ifiles;
+};
+
+/* In memory representation of the LFS */
+struct fs {
+	struct dlfs 	lfs;
+	uint32_t	avail_segs;
+	struct 		segment seg;
+	int		fd;
+};
+
+struct directory {
+	char data[512];
+	int curr;
+	int last;
+};
+
 static const struct dlfs dlfs32_default = {
 	.dlfs_magic =		LFS_MAGIC,
 	.dlfs_version =		LFS_VERSION,
@@ -163,25 +188,6 @@ static const struct dlfs dlfs32_default = {
 
 	.dlfs_pad = 		{ 0 },
 	.dlfs_cksum =		0
-};
-
-struct _ifile {
-	/*
-	 * data holds all the data and cleanerinfo. segusage, and ifiles just
-	 * point to it.
-	 */
-	char *data;
-	struct _cleanerinfo32 *cleanerinfo;
-	SEGUSE *segusage;
-	IFILE32	*ifiles;
-};
-
-/* In memory representation of the LFS */
-struct fs {
-	struct dlfs 	lfs;
-	uint32_t	avail_segs;
-	struct 		segment seg;
-	int		fd;
 };
 
 void init_lfs(struct fs *fs)
@@ -347,12 +353,6 @@ void advance_log(struct fs *fs, struct _ifile *ifile, uint32_t nr)
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 }
 
-struct directory {
-	char data[512];
-	int curr;
-	int last;
-};
-
 void *dir_add_entry(struct directory *dir, char *name, int inumber, int type)
 {
 	int namlen = strnlen(name, LFS_MAXNAMLEN);
@@ -369,7 +369,7 @@ void *dir_add_entry(struct directory *dir, char *name, int inumber, int type)
 
 	dir->last = dir->curr;
 	struct lfs_dirheader32 d = {
-		.dh_ino = ULFS_ROOTINO,
+		.dh_ino = inumber,
 		.dh_reclen = reclen,
 		.dh_type = type,
 		.dh_namlen = namlen
@@ -409,7 +409,7 @@ void write_empty_root_dir(struct fs *fs, struct _ifile *ifile)
 
 	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
-	//dir_add_entry(&dir, "aaaaaaaaaaaaaaax", ULFS_ROOTINO, LFS_DT_REG);
+	//dir_add_entry(&dir, "aaaaaaaaaaaaaaax", 3, LFS_DT_REG);
 	dir_done(&dir);
 
 	assert(fs->lfs.dlfs_offset == 3);
@@ -840,7 +840,7 @@ int main(int argc, char **argv)
 	fs.fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fs.fd != 0);
 
-	init_lfs(&fs.lfs);
+	init_lfs(&fs);
 
 	/* XXX: These make things a lot simpler. */
 	assert(DFL_LFSFRAG == DFL_LFSBLOCK);
