@@ -347,44 +347,53 @@ void advance_log(struct fs *fs, struct _ifile *ifile, uint32_t nr)
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 }
 
-/*
- * Sets b (in memory) with the inodes for a . and .. directories.
- */
-void get_empty_root_dir(char *b)
-{
-	struct lfs_dirheader32 dot = {
-		.dh_ino = ULFS_ROOTINO,
-		.dh_reclen = 12,
-		.dh_type = 4,
-		.dh_namlen = 1
-	};
-	memcpy(b, &dot, sizeof(dot));
-	b += sizeof(dot);
-	memcpy(b, ".", 1);
-	b += 4;
+struct directory {
+	char data[512];
+	int curr;
+	int last;
+};
 
-	struct lfs_dirheader32 dotdot = {
+void *dir_add_entry(struct directory *dir, char *name, int inumber, int type)
+{
+	int namlen = strnlen(name, LFS_MAXNAMLEN);
+	int reclen = namlen + sizeof(struct lfs_dirheader32);
+
+	/* The record length is always 4-byte aligned.*/
+	reclen = 4 * ((reclen + 3) / 4);
+
+	assert(namlen < LFS_MAXNAMLEN);
+	assert(dir->curr >= 0);
+	assert(dir->curr >= dir->last);
+	assert(dir->curr < 512);
+	assert(reclen % 4 == 0);
+
+	dir->last = dir->curr;
+	struct lfs_dirheader32 d = {
 		.dh_ino = ULFS_ROOTINO,
-		.dh_reclen = 500,
-		.dh_type = 4,
-		.dh_namlen = 2
+		.dh_reclen = reclen,
+		.dh_type = type,
+		.dh_namlen = namlen
 	};
-	memcpy(b, &dotdot, sizeof(dotdot));
-	b += sizeof(dotdot);
-	memcpy(b, "..", 2);
-	b += 4;
-/*
-	struct lfs_dirheader32 ifile = {
-		.dh_ino = 3,
-		.dh_reclen = 512 - 24,
-		.dh_type = LFS_DT_REG,
-		.dh_namlen = strlen("aaaaaaaaaaaaaaax")
-	};
-	memcpy(b, &ifile, sizeof(ifile));
-	b += sizeof(ifile);
-	strcpy(b, "aaaaaaaaaaaaaaax");
-	b += strlen("aaaaaaaaaaaaaaax");
-*/
+	memcpy(&dir->data[dir->curr], &d, sizeof(d));
+	dir->curr += sizeof(d);
+	strcpy(&dir->data[dir->curr], name);
+	dir->curr += reclen - sizeof(d);
+
+	assert(dir->curr >= 0);
+	assert(dir->curr >= dir->last);
+	assert(dir->curr < 512);
+	assert(dir->last < 512);
+}
+
+/* The last directory entry record len has to fill the remaining 512 bytes. */
+void *dir_done(struct directory *dir)
+{
+	assert(dir->curr > 0);
+	assert(dir->last < dir->curr);
+	assert(dir->last < 512);
+	assert(dir->curr < 512);
+	struct lfs_dirheader32 *last = (struct lfs_dirheader32 *)&dir->data[dir->last];
+	last->dh_reclen = 512 - dir->last;
 }
 
 void write_file(struct fs *fs, struct _ifile *ifile,
@@ -393,19 +402,18 @@ void write_file(struct fs *fs, struct _ifile *ifile,
 
 /*
  * Writes one block for the dir data, and one block for the inode.
- *
- * XXX: One full block for the inode is a bit excessive.
  */
 void write_empty_root_dir(struct fs *fs, struct _ifile *ifile)
 {
-	char block[DFL_LFSBLOCK];
+	struct directory dir = {0};
 
-	/* Data for root directory (blkno=48): */
-	memset(block, 0, DFL_LFSBLOCK);
-	get_empty_root_dir(block);
-	
+	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
+	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
+	//dir_add_entry(&dir, "aaaaaaaaaaaaaaax", ULFS_ROOTINO, LFS_DT_REG);
+	dir_done(&dir);
+
 	assert(fs->lfs.dlfs_offset == 3);
-	write_file(fs, ifile, block, 512, ULFS_ROOTINO,
+	write_file(fs, ifile, &dir.data[0], 512, ULFS_ROOTINO,
 		LFS_IFDIR | 0755, 2, 0);
 }
 
