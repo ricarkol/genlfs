@@ -355,10 +355,6 @@ void *dir_done(struct directory *dir)
 	last->dh_reclen = 512 - dir->last;
 }
 
-void write_file(struct fs *fs, struct _ifile *ifile,
-		char *data, uint64_t size, int inumber,
-		int mode, int nlink, int flags);
-
 /*
  * Writes one block for the dir data, and one block for the inode.
  */
@@ -372,7 +368,7 @@ void write_empty_root_dir(struct fs *fs)
 	dir_done(&dir);
 
 	assert(fs->lfs.dlfs_offset == 3);
-	write_file(fs, &fs->ifile, &dir.data[0], 512, ULFS_ROOTINO,
+	write_file(fs, &dir.data[0], 512, ULFS_ROOTINO,
 		LFS_IFDIR | 0755, 2, 0);
 }
 
@@ -580,10 +576,10 @@ int write_triple_indirect(struct fs *fs, struct _ifile *ifile,
 	return off;
 }
 
-void write_file(struct fs *fs, struct _ifile *ifile,
-		char *data, uint64_t size, int inumber,
+void write_file(struct fs *fs, char *data, uint64_t size, int inumber,
 		int mode, int nlink, int flags)
 {
+	struct _ifile *ifile = &fs->ifile;
 	uint32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
 	uint32_t i, j;
 	int *blk_ptrs;

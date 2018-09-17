@@ -120,8 +120,7 @@ int main(int argc, char **argv)
 	memset(block, '.', FSIZE);
 
 	block[FSIZE - 100] = '\n';
-	write_file(&fs, &fs.ifile, block,
-			FSIZE, 3, LFS_IFREG | 0777, 1, 0);
+	write_file(&fs, block, FSIZE, 3, LFS_IFREG | 0777, 1, 0);
 
 	write_ifile(&fs);
 

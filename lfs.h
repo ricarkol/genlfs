@@ -1322,7 +1322,7 @@ void write_empty_root_dir(struct fs *fs);
 void write_ifile(struct fs *fs);
 int write_superblock(struct fs *fs);
 void write_segment_summary(struct fs *fs);
-
-
+void write_file(struct fs *fs, char *data, uint64_t size, int inumber,
+		int mode, int nlink, int flags);
 
 #endif /* !_UFS_LFS_LFS_H_ */
