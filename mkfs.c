@@ -82,10 +82,6 @@ u_int32_t cksum(void *str, size_t len);
 #define IFILE_MAP_SZ	1
 #define MAX_INODES	((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32))
 
-/* globals */
-static uint64_t nbytes = (1024 * 1024 * 1 * 1024ull);
-static uint64_t nsegs;
-
 /*
  * calculate the maximum file size allowed with the specified block shift.
  */
@@ -125,12 +121,14 @@ struct fs {
 	uint32_t	avail_segs;
 	struct 		segment seg;
 	int		fd;
+	uint64_t	nbytes;
+	uint64_t	nsegs;
 };
 
 struct directory {
-	char data[512];
-	int curr;
-	int last;
+	char	data[512];
+	int 	curr;
+	int 	last;
 };
 
 static const struct dlfs dlfs32_default = {
@@ -194,8 +192,10 @@ void init_lfs(struct fs *fs)
 {
 	uint64_t resvseg;
 	struct dlfs *lfs = &fs->lfs;
+	uint64_t nsegs;
+	uint64_t nbytes = fs->nbytes;
 
-	nsegs = ((nbytes/DFL_LFSSEG) - 1);
+	fs->nsegs = nsegs = ((fs->nbytes/DFL_LFSSEG) - 1);
 	resvseg = (((nsegs/DFL_MIN_FREE_SEGS) / 2) + 1);
 
 	lfs->dlfs_size = nbytes/DFL_LFSBLOCK;
@@ -417,8 +417,9 @@ void write_empty_root_dir(struct fs *fs, struct _ifile *ifile)
 		LFS_IFDIR | 0755, 2, 0);
 }
 
-void init_ifile(struct dlfs *lfs, struct _ifile *ifile)
+void init_ifile(struct fs *fs, struct _ifile *ifile)
 {
+	struct dlfs *lfs = &fs->lfs;
 	uint32_t i;
 	struct segusage empty_segusage = {
 		.su_nbytes = 0,
@@ -453,21 +454,22 @@ void init_ifile(struct dlfs *lfs, struct _ifile *ifile)
 	ifile->cleanerinfo->free_head = 1;
 	ifile->cleanerinfo->free_tail = MAX_INODES - 1;
 
-	for (i = 0; i < nsegs; i++) {
+	for (i = 0; i < fs->nsegs; i++) {
 		memcpy(&ifile->segusage[i], &empty_segusage,
 			sizeof(empty_segusage));
 	}
 }
 
-void init_sboffs(struct dlfs *lfs, struct _ifile *ifile)
+void init_sboffs(struct fs *fs, struct _ifile *ifile)
 {
+	struct dlfs *lfs = &fs->lfs;
 	uint32_t i, j;
 	uint32_t sb_interval;	/* number of segs between super blocks */
 
-	if ((sb_interval = nsegs / LFS_MAXNUMSB) < LFS_MIN_SBINTERVAL)
+	if ((sb_interval = fs->nsegs / LFS_MAXNUMSB) < LFS_MIN_SBINTERVAL)
 		sb_interval = LFS_MIN_SBINTERVAL;
 
-	for (i = j = 0; i < nsegs; i++) {
+	for (i = j = 0; i < fs->nsegs; i++) {
 		if (i == 0) {
 			ifile->segusage[i].su_flags = SEGUSE_SUPERBLOCK;
 			lfs->dlfs_sboffs[j] = 1;
@@ -817,7 +819,7 @@ void write_ifile(struct fs *fs, struct _ifile *ifile)
 	/* IFILE/SEGUSAGE (block 1) */
 	assert(ifile->segusage[fs->seg.seg_number].su_nsums == 1);
 	assert(ifile->segusage[fs->seg.seg_number].su_lastmod == 0);
-	assert((nsegs * sizeof(SEGUSE)) < (fs->lfs.dlfs_segtabsz * DFL_LFSBLOCK));
+	assert((fs->nsegs * sizeof(SEGUSE)) < (fs->lfs.dlfs_segtabsz * DFL_LFSBLOCK));
 
 	/* IFILE/INODE MAP */
 
@@ -837,6 +839,8 @@ int main(int argc, char **argv)
 		errx(1, "Usage: %s <file/device>", argv[0]);
 	}
 
+	fs.nbytes = (1024 * 1024 * 1 * 1024ull);
+
 	fs.fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fs.fd != 0);
 
@@ -848,8 +852,8 @@ int main(int argc, char **argv)
 	assert(fs.lfs.dlfs_fsbpseg < MAX_BLOCKS_PER_SEG);
 	assert(fs.lfs.dlfs_cleansz == 1);
 
-	init_ifile(&fs.lfs, &ifile);
-	init_sboffs(&fs.lfs, &ifile);
+	init_ifile(&fs, &ifile);
+	init_sboffs(&fs, &ifile);
 
 	fs.lfs.dlfs_curseg = (-1)*(DFL_LFSSEG/DFL_LFSBLOCK);
 	fs.seg.seg_number = -1;
