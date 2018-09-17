@@ -123,6 +123,7 @@ struct fs {
 	int		fd;
 	uint64_t	nbytes;
 	uint64_t	nsegs;
+	struct _ifile	ifile;
 };
 
 struct directory {
@@ -187,39 +188,6 @@ static const struct dlfs dlfs32_default = {
 	.dlfs_pad = 		{ 0 },
 	.dlfs_cksum =		0
 };
-
-void init_lfs(struct fs *fs)
-{
-	uint64_t resvseg;
-	struct dlfs *lfs = &fs->lfs;
-	uint64_t nsegs;
-	uint64_t nbytes = fs->nbytes;
-
-	fs->nsegs = nsegs = ((fs->nbytes/DFL_LFSSEG) - 1);
-	resvseg = (((nsegs/DFL_MIN_FREE_SEGS) / 2) + 1);
-
-	lfs->dlfs_size = nbytes/DFL_LFSBLOCK;
-	lfs->dlfs_dsize = ((uint64_t)(nsegs - nsegs/DFL_MIN_FREE_SEGS) *
-			(uint64_t)DFL_LFSSEG - 
-			DFL_LFSBLOCK * (uint64_t)NSUPERBLOCKS) / DFL_LFSBLOCK;
-	lfs->dlfs_lastseg = (nbytes - 2*(uint64_t)DFL_LFSSEG) / DFL_LFSBLOCK;
-	lfs->dlfs_bfree = ((nsegs - nsegs/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
-			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK;
-	lfs->dlfs_avail = SEGS_TO_FSBLOCKS((nbytes/(uint64_t)DFL_LFSSEG) - resvseg) -
-				NSUPERBLOCKS;
-	lfs->dlfs_nseg = nsegs;
-	lfs->dlfs_segtabsz = ((nsegs + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
-				(DFL_LFSBLOCK/sizeof(SEGUSE)));
-	assert(lfs->dlfs_lastseg <= SEGS_TO_FSBLOCKS(nsegs));
-	lfs->dlfs_nclean = nsegs;
-	lfs->dlfs_minfreeseg = (nsegs/DFL_MIN_FREE_SEGS);
-	lfs->dlfs_resvseg = resvseg;
-
-	/* This mem is freed at exit time. */
-	assert(lfs->dlfs_sumsize >= DFL_LFSBLOCK);
-	fs->seg.segsum = malloc(lfs->dlfs_sumsize);
-	assert(fs->seg.segsum);
-}
 
 /* Add a block into the data checksum */
 void segment_add_datasum(struct segment *seg, char *block, uint32_t size)
@@ -403,7 +371,7 @@ void write_file(struct fs *fs, struct _ifile *ifile,
 /*
  * Writes one block for the dir data, and one block for the inode.
  */
-void write_empty_root_dir(struct fs *fs, struct _ifile *ifile)
+void write_empty_root_dir(struct fs *fs)
 {
 	struct directory dir = {0};
 
@@ -413,13 +381,14 @@ void write_empty_root_dir(struct fs *fs, struct _ifile *ifile)
 	dir_done(&dir);
 
 	assert(fs->lfs.dlfs_offset == 3);
-	write_file(fs, ifile, &dir.data[0], 512, ULFS_ROOTINO,
+	write_file(fs, &fs->ifile, &dir.data[0], 512, ULFS_ROOTINO,
 		LFS_IFDIR | 0755, 2, 0);
 }
 
-void init_ifile(struct fs *fs, struct _ifile *ifile)
+void init_ifile(struct fs *fs)
 {
 	struct dlfs *lfs = &fs->lfs;
+	struct _ifile *ifile = &fs->ifile;
 	uint32_t i;
 	struct segusage empty_segusage = {
 		.su_nbytes = 0,
@@ -799,9 +768,10 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile, uint32_t nblocks)
 }
 
 
-void write_ifile(struct fs *fs, struct _ifile *ifile)
+void write_ifile(struct fs *fs)
 {
 	int nblocks = fs->lfs.dlfs_cleansz + fs->lfs.dlfs_segtabsz + 1;
+	struct _ifile *ifile = &fs->ifile;
 
 	/* point to ifile inode */
 	fs->lfs.dlfs_idaddr = fs->lfs.dlfs_offset;
@@ -826,55 +796,79 @@ void write_ifile(struct fs *fs, struct _ifile *ifile)
 	write_ifile_content(fs, ifile, nblocks);
 }
 
+void init_lfs(struct fs *fs, uint64_t nbytes)
+{
+	uint64_t resvseg;
+	struct dlfs *lfs = &fs->lfs;
+	uint64_t nsegs;
+
+	fs->lfs = dlfs32_default;
+
+	fs->nbytes = nbytes;
+	fs->nsegs = nsegs = ((fs->nbytes/DFL_LFSSEG) - 1);
+	resvseg = (((nsegs/DFL_MIN_FREE_SEGS) / 2) + 1);
+
+	lfs->dlfs_size = nbytes/DFL_LFSBLOCK;
+	lfs->dlfs_dsize = ((uint64_t)(nsegs - nsegs/DFL_MIN_FREE_SEGS) *
+			(uint64_t)DFL_LFSSEG - 
+			DFL_LFSBLOCK * (uint64_t)NSUPERBLOCKS) / DFL_LFSBLOCK;
+	lfs->dlfs_lastseg = (nbytes - 2*(uint64_t)DFL_LFSSEG) / DFL_LFSBLOCK;
+	lfs->dlfs_bfree = ((nsegs - nsegs/DFL_MIN_FREE_SEGS) * DFL_LFSSEG - 
+			DFL_LFSBLOCK * NSUPERBLOCKS) / DFL_LFSBLOCK;
+	lfs->dlfs_avail = SEGS_TO_FSBLOCKS((nbytes/(uint64_t)DFL_LFSSEG) - resvseg) -
+				NSUPERBLOCKS;
+	lfs->dlfs_nseg = nsegs;
+	lfs->dlfs_segtabsz = ((nsegs + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
+				(DFL_LFSBLOCK/sizeof(SEGUSE)));
+	assert(lfs->dlfs_lastseg <= SEGS_TO_FSBLOCKS(nsegs));
+	lfs->dlfs_nclean = nsegs;
+	lfs->dlfs_minfreeseg = (nsegs/DFL_MIN_FREE_SEGS);
+	lfs->dlfs_resvseg = resvseg;
+
+	/* This mem is freed at exit time. */
+	assert(lfs->dlfs_sumsize >= DFL_LFSBLOCK);
+	fs->seg.segsum = malloc(lfs->dlfs_sumsize);
+	assert(fs->seg.segsum);
+
+	/* XXX: These make things a lot simpler. */
+	assert(DFL_LFSFRAG == DFL_LFSBLOCK);
+	assert(fs->lfs.dlfs_fsbpseg > (2 + 6 + 2));
+	assert(fs->lfs.dlfs_fsbpseg < MAX_BLOCKS_PER_SEG);
+	assert(fs->lfs.dlfs_cleansz == 1);
+
+	struct _ifile *ifile = &fs->ifile;
+
+	init_ifile(fs);
+	init_sboffs(fs, ifile);
+
+	fs->seg.cur_data_for_cksum = &fs->seg.data_for_cksum[0];
+
+	/* XXX: start_segment starts by advancing seg_number and dlfs_curseg */
+	fs->lfs.dlfs_curseg = (-1)*(DFL_LFSSEG/DFL_LFSBLOCK);
+	fs->seg.seg_number = -1;
+	/* The first block is left empty */
+	_advance_log(&fs->lfs, 1);
+	start_segment(fs, ifile);
+}
+
 int main(int argc, char **argv)
 {
-	struct fs fs = {
-		.lfs = dlfs32_default
-	};
+	struct fs fs;
 	uint32_t avail_segs;
 	off_t off;
-	struct _ifile ifile;
 
 	if (argc != 2) {
 		errx(1, "Usage: %s <file/device>", argv[0]);
 	}
 
-	fs.nbytes = (1024 * 1024 * 1 * 1024ull);
+	uint64_t nbytes = (1024 * 1024 * 1 * 1024ull);
 
 	fs.fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fs.fd != 0);
 
-	init_lfs(&fs);
+	init_lfs(&fs, nbytes);
 
-	/* XXX: These make things a lot simpler. */
-	assert(DFL_LFSFRAG == DFL_LFSBLOCK);
-	assert(fs.lfs.dlfs_fsbpseg > (2 + 6 + 2));
-	assert(fs.lfs.dlfs_fsbpseg < MAX_BLOCKS_PER_SEG);
-	assert(fs.lfs.dlfs_cleansz == 1);
-
-	init_ifile(&fs, &ifile);
-	init_sboffs(&fs, &ifile);
-
-	fs.lfs.dlfs_curseg = (-1)*(DFL_LFSSEG/DFL_LFSBLOCK);
-	fs.seg.seg_number = -1;
-	fs.seg.cur_data_for_cksum = &fs.seg.data_for_cksum[0];
-	_advance_log(&fs.lfs, 1);
-	start_segment(&fs, &ifile);
-
-	write_empty_root_dir(&fs, &ifile);
-
-// passes
-//#define FSIZE ((DFL_LFSBLOCK * 113))
-// advance_log 125
-
-// fails
-//#define FSIZE ((DFL_LFSBLOCK * 114))
-//advance_log 126
-
-// fails
-//#define FSIZE ((DFL_LFSBLOCK * 115))
-//advance_log 127
-//start_segment
+	write_empty_root_dir(&fs);
 
 #define FSIZE ((DFL_LFSBLOCK * 130))
 	char *block = malloc(FSIZE);
@@ -885,7 +879,7 @@ int main(int argc, char **argv)
 	//write_file(&fs, &ifile, block,
 	//		FSIZE, 3, LFS_IFREG | 0777, 1, 0);
 
-	write_ifile(&fs, &ifile);
+	write_ifile(&fs);
 
 	write_superblock(&fs);
 
