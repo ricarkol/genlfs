@@ -368,7 +368,7 @@ void write_empty_root_dir(struct fs *fs)
 
 	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
-	//dir_add_entry(&dir, "aaaaaaaaaaaaaaax", 3, LFS_DT_REG);
+	dir_add_entry(&dir, "aaaaaaaaaaaaaaax", 3, LFS_DT_REG);
 	dir_done(&dir);
 
 	assert(fs->lfs.dlfs_offset == 3);
