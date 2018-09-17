@@ -312,7 +312,7 @@ void advance_log(struct fs *fs, struct _ifile *ifile, uint32_t nr)
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 }
 
-void *dir_add_entry(struct directory *dir, char *name, int inumber, int type)
+void dir_add_entry(struct directory *dir, char *name, int inumber, int type)
 {
 	int namlen = strnlen(name, LFS_MAXNAMLEN);
 	int reclen = namlen + sizeof(struct lfs_dirheader32);
@@ -345,7 +345,7 @@ void *dir_add_entry(struct directory *dir, char *name, int inumber, int type)
 }
 
 /* The last directory entry record len has to fill the remaining 512 bytes. */
-void *dir_done(struct directory *dir)
+void dir_done(struct directory *dir)
 {
 	assert(dir->curr > 0);
 	assert(dir->last < dir->curr);
