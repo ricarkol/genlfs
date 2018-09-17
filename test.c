@@ -74,20 +74,18 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <err.h>
-#include <time.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <stdio.h>
+#include <assert.h>
+#include <string.h>
 
 #include "lfs.h"
-#include "lfs_accessors.h"
 #include "config.h"
 
+#define FSIZE ((DFL_LFSBLOCK * 130))
 
 int main(int argc, char **argv)
 {
@@ -112,7 +110,19 @@ int main(int argc, char **argv)
 
 	init_lfs(&fs, nbytes);
 
-	write_empty_root_dir(&fs);
+	struct directory dir = {0};
+	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
+	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
+	dir_add_entry(&dir, "aaaaaaaaaaaaaaax", 3, LFS_DT_REG);
+	dir_done(&dir);
+	write_file(&fs, &dir.data[0], 512, ULFS_ROOTINO,
+		LFS_IFDIR | 0755, 2, 0);
+
+	char *block = malloc(FSIZE);
+	assert(block);
+	memset(block, '.', FSIZE);
+	block[FSIZE - 100] = '\n';
+	write_file(&fs, block, FSIZE, 3, LFS_IFREG | 0777, 1, 0);
 
 	write_ifile(&fs);
 	write_superblock(&fs);
