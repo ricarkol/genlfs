@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2018, IBM
+ * Author(s): Ricardo Koller
+ *
+ * Permission to use, copy, modify, and/or distribute this software for
+ * any purpose with or without fee is hereby granted, provided that the
+ * above copyright notice and this permission notice appear in all
+ * copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
+ * WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
+ * AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA
+ * OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
 /*	$NetBSD: lfs.h,v 1.203 2017/07/26 16:42:37 maya Exp $	*/
 
 /*  from NetBSD: dinode.h,v 1.25 2016/01/22 23:06:10 dholland Exp  */
@@ -1269,5 +1288,41 @@ __BEGIN_DECLS
 void lfs_itimes(struct inode *, const struct timespec *,
     const struct timespec *, const struct timespec *);
 __END_DECLS
+
+struct _ifile {
+	/*
+	 * data holds all the data and cleanerinfo. segusage, and ifiles just
+	 * point to it.
+	 */
+	char		*data;
+	struct _cleanerinfo32 *cleanerinfo;
+	SEGUSE		*segusage;
+	IFILE32		*ifiles;
+};
+
+/* In memory representation of the LFS */
+struct fs {
+	struct dlfs 	lfs;
+	uint32_t	avail_segs;
+	struct 		segment seg;
+	int		fd;
+	uint64_t	nbytes;
+	uint64_t	nsegs;
+	struct _ifile	ifile;
+};
+
+struct directory {
+	char	data[512];
+	int 	curr;
+	int 	last;
+};
+
+void init_lfs(struct fs *fs, uint64_t nbytes);
+void write_empty_root_dir(struct fs *fs);
+void write_ifile(struct fs *fs);
+int write_superblock(struct fs *fs);
+void write_segment_summary(struct fs *fs);
+
+
 
 #endif /* !_UFS_LFS_LFS_H_ */
