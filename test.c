@@ -114,7 +114,8 @@ int main(int argc, char **argv)
 	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "aaaaaaaaaaaaaaax", 3, LFS_DT_REG);
-	dir_add_entry(&dir, "test2", 3, LFS_DT_REG);
+	dir_add_entry(&dir, "test2", 4, LFS_DT_REG);
+	dir_add_entry(&dir, "test3", 5, LFS_DT_REG);
 	dir_done(&dir);
 	write_file(&fs, &dir.data[0], 512, ULFS_ROOTINO,
 		LFS_IFDIR | 0755, 2, 0);
@@ -124,6 +125,40 @@ int main(int argc, char **argv)
 	memset(block, '.', FSIZE);
 	block[FSIZE - 100] = '\n';
 	write_file(&fs, block, FSIZE, 3, LFS_IFREG | 0777, 1, 0);
+
+	struct directory dir2 = {0};
+	dir_add_entry(&dir2, ".", 4, LFS_DT_DIR);
+	dir_add_entry(&dir2, "..", ULFS_ROOTINO, LFS_DT_DIR);
+	dir_add_entry(&dir2, "data", 9, LFS_DT_REG);
+	dir_done(&dir2);
+	write_file(&fs, &dir2.data[0], 512, 4,
+		LFS_IFDIR | 0755, 2, 0);
+
+	sprintf(block, "/test2/data bla bla\n");
+	write_file(&fs, block, strlen(block), 9, LFS_IFREG | 0777, 1, 0);
+
+	struct directory dir3 = {0};
+	dir_add_entry(&dir3, ".", 5, LFS_DT_DIR);
+	dir_add_entry(&dir3, "..", ULFS_ROOTINO, LFS_DT_DIR);
+	dir_add_entry(&dir3, "test4", 7, LFS_DT_DIR);
+	dir_add_entry(&dir3, "data", 6, LFS_DT_REG);
+	dir_done(&dir3);
+	write_file(&fs, &dir3.data[0], 512, 5,
+		LFS_IFDIR | 0755, 2, 0);
+
+	sprintf(block, "/test3/data bla bla\n");
+	write_file(&fs, block, strlen(block), 6, LFS_IFREG | 0777, 1, 0);
+
+	struct directory dir4 = {0};
+	dir_add_entry(&dir4, ".", 7, LFS_DT_DIR);
+	dir_add_entry(&dir4, "..", 5, LFS_DT_DIR);
+	dir_add_entry(&dir4, "data", 8, LFS_DT_REG);
+	dir_done(&dir4);
+	write_file(&fs, &dir4.data[0], 512, 7,
+		LFS_IFDIR | 0755, 2, 0);
+
+	sprintf(block, "/test3/test4/data bla bla\n");
+	write_file(&fs, block, strlen(block), 8, LFS_IFREG | 0777, 1, 0);
 
 	write_ifile(&fs);
 	write_superblock(&fs);
