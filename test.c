@@ -114,6 +114,7 @@ int main(int argc, char **argv)
 	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "aaaaaaaaaaaaaaax", 3, LFS_DT_REG);
+	dir_add_entry(&dir, "test2", 3, LFS_DT_REG);
 	dir_done(&dir);
 	write_file(&fs, &dir.data[0], 512, ULFS_ROOTINO,
 		LFS_IFDIR | 0755, 2, 0);

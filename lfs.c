@@ -317,8 +317,21 @@ void dir_add_entry(struct directory *dir, char *name, int inumber, int type)
 	int namlen = strnlen(name, LFS_MAXNAMLEN);
 	int reclen = namlen + sizeof(struct lfs_dirheader32);
 
-	/* The record length is always 4-byte aligned.*/
-	reclen = 4 * ((reclen + 3) / 4);
+	/*
+	 * The record length is always 4-byte aligned:
+	 * The directory entry header structure (struct lfs_dirheader) is just
+	 * the header information. A complete entry is this plus a null-
+	 * terminated name following it, plus some amount of padding. The
+	 * length of the name (not including the null terminator) is given by
+	 * the namlen field of the header; the complete record length,
+	 * including the null terminator and padding, is given by the reclen
+	 * field of the header. The record length is always 4-byte aligned.
+	 * (Even on 64-bit volumes, the record length is only 4-byte aligned,
+	 * not 8-byte.)
+	 */
+
+	/* The "+ 1" is for the null terminator. */
+	reclen = 4 * ((reclen + 3 + 1) / 4);
 
 	assert(namlen < LFS_MAXNAMLEN);
 	assert(dir->curr >= 0);
