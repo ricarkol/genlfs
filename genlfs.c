@@ -4,6 +4,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <err.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <string.h>
+
+#include "lfs.h"
+#include "config.h"
 
 
 /*
@@ -17,46 +25,84 @@
    DT_UNKNOWN  The file type is unknown.
    */
 
-void walk(void)
+void walk(struct fs *fs, int parent_inum, int inum)
 {
 	DIR *d;
-	struct dirent *dir;
+	struct dirent *dirent;
+	struct directory dir = {0};
+	char block[DFL_LFSBLOCK];
 
 	d = opendir(".");
 
-	if (d) {
-		while ((dir = readdir(d)) != NULL) {
-			struct stat sb;
-
-			printf("%d %s\n", dir->d_ino, dir->d_name);
-			lstat(dir->d_name, &sb);
-
-			switch (sb.st_mode & S_IFMT) {
-				case S_IFBLK:  printf("block device\n");            break;
-				case S_IFCHR:  printf("character device\n");        break;
-				case S_IFDIR: 
-					       if (strcmp(dir->d_name, ".") == 0)
-						       break;
-					       if (strcmp(dir->d_name, "..") == 0)
-							break;
-					       printf("directory\n");
-					       chdir(dir->d_name);
-					       walk();
-					       chdir("..");
-					       break;
-				case S_IFIFO:  printf("FIFO/pipe\n");               break;
-				case S_IFLNK:  printf("symlink\n");                 break;
-				case S_IFREG:  printf("regular file\n");            break;
-				case S_IFSOCK: printf("socket\n");                  break;
-				default:       printf("unknown?\n");                break;
-			}
-
-		}
-		closedir(d);
+	if (d == NULL) {
+		return;
 	}
+
+	dir_add_entry(&dir, ".", inum, LFS_DT_DIR);
+	dir_add_entry(&dir, "..", parent_inum, LFS_DT_DIR);
+
+	while ((dirent = readdir(d)) != NULL) {
+		struct stat sb;
+
+		printf("%d %s\n", dirent->d_ino, dirent->d_name);
+		lstat(dirent->d_name, &sb);
+
+		switch (sb.st_mode & S_IFMT) {
+			case S_IFBLK:  printf("block device\n");            break;
+			case S_IFCHR:  printf("character device\n");        break;
+			case S_IFDIR: 
+				       if (strcmp(dirent->d_name, ".") == 0)
+					       break;
+				       if (strcmp(dirent->d_name, "..") == 0)
+					       break;
+				       dir_add_entry(&dir, dirent->d_name,
+						       dirent->d_ino % 128, LFS_DT_DIR);
+				       printf("directory\n");
+				       chdir(dirent->d_name);
+				       walk(fs, inum, dirent->d_ino % 128);
+				       chdir("..");
+				       break;
+			case S_IFIFO:  printf("FIFO/pipe\n");               break;
+			case S_IFLNK:  printf("symlink\n");                 break;
+			case S_IFREG:  printf("regular file\n");
+					sprintf(block, "bla bla\n");
+					write_file(fs, block, strlen(block),
+						dirent->d_ino % 128, LFS_IFREG | 0777, 1, 0);
+				       dir_add_entry(&dir, dirent->d_name,
+						       dirent->d_ino % 128, LFS_DT_REG);
+				       break;
+			case S_IFSOCK: printf("socket\n");                  break;
+			default:       printf("unknown?\n");                break;
+		}
+
+	}
+
+	dir_done(&dir);
+	write_file(fs, &dir.data[0], 512, inum,
+		LFS_IFDIR | 0755, 2, 0);
+
+	closedir(d);
 }
 
-int main()
+int main(int argc, char **argv)
 {
-	walk();
+	struct fs fs;
+	uint64_t nbytes = 1024 * 1024 * 1024 * 64ULL;
+
+	if (argc != 3) {
+		errx(1, "Usage: %s <directory> <image>", argv[0]);
+	}
+
+	fs.fd = open(argv[2], O_CREAT | O_RDWR, DEFFILEMODE);
+	assert(fs.fd != 0);
+
+	init_lfs(&fs, nbytes);
+
+	chdir(argv[1]);
+	walk(&fs, ULFS_ROOTINO, ULFS_ROOTINO);
+
+	write_ifile(&fs);
+	write_superblock(&fs);
+	write_segment_summary(&fs);
+	close(fs.fd);
 }
