@@ -92,7 +92,7 @@ void walk(struct fs *fs, int parent_inum, int inum)
 int main(int argc, char **argv)
 {
 	struct fs fs;
-	uint64_t nbytes = 1024 * 1024 * 1024 * 50ULL;
+	uint64_t nbytes = 1024 * 1024 * 1024 * 40ULL;
 
 	if (argc != 3) {
 		errx(1, "Usage: %s <directory> <image>", argv[0]);
