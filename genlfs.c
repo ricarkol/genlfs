@@ -13,6 +13,12 @@
 #include "lfs.h"
 #include "config.h"
 
+static next_inum = 4;
+
+int get_next_inum(void)
+{
+	return ++next_inum;
+}
 
 /*
    DT_BLK      This is a block device.
@@ -38,11 +44,9 @@ void walk(struct fs *fs, int parent_inum, int inum)
 		return;
 	}
 
-	dir_add_entry(&dir, ".", inum, LFS_DT_DIR);
-	dir_add_entry(&dir, "..", parent_inum, LFS_DT_DIR);
-
 	while ((dirent = readdir(d)) != NULL) {
 		struct stat sb;
+		int next_inum = get_next_inum();
 
 		printf("%d %s\n", dirent->d_ino, dirent->d_name);
 		lstat(dirent->d_name, &sb);
@@ -56,10 +60,10 @@ void walk(struct fs *fs, int parent_inum, int inum)
 				       if (strcmp(dirent->d_name, "..") == 0)
 					       break;
 				       dir_add_entry(&dir, dirent->d_name,
-						       dirent->d_ino % 128, LFS_DT_DIR);
+						       next_inum, LFS_DT_DIR);
 				       printf("directory\n");
 				       chdir(dirent->d_name);
-				       walk(fs, inum, dirent->d_ino % 128);
+				       walk(fs, inum, next_inum);
 				       chdir("..");
 				       break;
 			case S_IFIFO:  printf("FIFO/pipe\n");               break;
@@ -67,9 +71,9 @@ void walk(struct fs *fs, int parent_inum, int inum)
 			case S_IFREG:  printf("regular file\n");
 					sprintf(block, "bla bla\n");
 					write_file(fs, block, strlen(block),
-						dirent->d_ino % 128, LFS_IFREG | 0777, 1, 0);
+						next_inum, LFS_IFREG | 0777, 1, 0);
 				       dir_add_entry(&dir, dirent->d_name,
-						       dirent->d_ino % 128, LFS_DT_REG);
+						       next_inum, LFS_DT_REG);
 				       break;
 			case S_IFSOCK: printf("socket\n");                  break;
 			default:       printf("unknown?\n");                break;
@@ -77,9 +81,10 @@ void walk(struct fs *fs, int parent_inum, int inum)
 
 	}
 
+	dir_add_entry(&dir, ".", inum, LFS_DT_DIR);
+	dir_add_entry(&dir, "..", parent_inum, LFS_DT_DIR);
 	dir_done(&dir);
-	write_file(fs, &dir.data[0], 512, inum,
-		LFS_IFDIR | 0755, 2, 0);
+	write_file(fs, &dir.data[0], 512, inum,	LFS_IFDIR | 0755, inum, 0);
 
 	closedir(d);
 }
@@ -87,7 +92,7 @@ void walk(struct fs *fs, int parent_inum, int inum)
 int main(int argc, char **argv)
 {
 	struct fs fs;
-	uint64_t nbytes = 1024 * 1024 * 1024 * 64ULL;
+	uint64_t nbytes = 1024 * 1024 * 1024 * 50ULL;
 
 	if (argc != 3) {
 		errx(1, "Usage: %s <directory> <image>", argv[0]);
