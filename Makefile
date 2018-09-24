@@ -14,3 +14,6 @@ genlfs: genlfs.c lfs.c lfs_cksum.c
 
 tests:
 	bats tests.bats
+
+clean:
+	rm -f mkfs test check genlfs
