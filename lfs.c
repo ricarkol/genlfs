@@ -767,11 +767,17 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile, uint32_t nblocks)
 	}
 }
 
-
 void write_ifile(struct fs *fs)
 {
 	int nblocks = fs->lfs.dlfs_cleansz + fs->lfs.dlfs_segtabsz + 1;
 	struct _ifile *ifile = &fs->ifile;
+
+	/* move to the next segment */
+	uint32_t curr = fs->seg.seg_number;
+	while (fs->seg.seg_number == curr)
+		advance_log_by_one(fs, ifile);
+
+	ifile->segusage[fs->seg.seg_number].su_nbytes += nblocks * DFL_LFSBLOCK;
 
 	/* point to ifile inode */
 	fs->lfs.dlfs_idaddr = fs->lfs.dlfs_offset;
@@ -792,7 +798,6 @@ void write_ifile(struct fs *fs)
 	assert((fs->nsegs * sizeof(SEGUSE)) < (fs->lfs.dlfs_segtabsz * DFL_LFSBLOCK));
 
 	/* IFILE/INODE MAP */
-
 	write_ifile_content(fs, ifile, nblocks);
 }
 
@@ -820,6 +825,16 @@ void init_lfs(struct fs *fs, uint64_t nbytes)
 	lfs->dlfs_nseg = nsegs;
 	lfs->dlfs_segtabsz = ((nsegs + DFL_LFSBLOCK/sizeof(SEGUSE) - 1) /
 				(DFL_LFSBLOCK/sizeof(SEGUSE)));
+
+	/*
+	 * write_ifile() currently doesn't support writing an ifile that spans
+	 * more than one segment. Check that we won't get into that situation
+	 * The "1 + 2" are for the inode, a segment summary, and a potential
+	 * superblock.
+	 */
+	int nblocks = fs->lfs.dlfs_cleansz + fs->lfs.dlfs_segtabsz + 1 + 2;
+	assert(nblocks < fs->lfs.dlfs_fsbpseg);
+
 	assert(lfs->dlfs_lastseg <= SEGS_TO_FSBLOCKS(nsegs));
 	lfs->dlfs_nclean = nsegs;
 	lfs->dlfs_minfreeseg = (nsegs/DFL_MIN_FREE_SEGS);
