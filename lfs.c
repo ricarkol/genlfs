@@ -207,13 +207,19 @@ int write_superblock(struct fs *fs)
 }
 
 /* Advance the log by nr FS blocks. */
-void _advance_log(struct dlfs *lfs, uint32_t nr)
+int _advance_log(struct dlfs *lfs, uint32_t nr)
 {
+	if (lfs->dlfs_avail <= nr)
+		return 1;
+
 	/* Should not be used to make space for a superblock */
 	lfs->dlfs_offset += nr;
 	lfs->dlfs_lastpseg += nr;
 	lfs->dlfs_avail -= nr;
+	assert(lfs->dlfs_bfree - nr > 0);
 	lfs->dlfs_bfree -= nr;
+
+	return 0;
 }
 
 void start_segment(struct fs *fs, struct _ifile *ifile)
@@ -234,7 +240,7 @@ void start_segment(struct fs *fs, struct _ifile *ifile)
 		/* The first block is for the superblock of the segment (if
 		 * any) */
 		segment_add_datasum(&fs->seg, (char*)&fs->lfs, DFL_LFSBLOCK);
-		_advance_log(&fs->lfs, 1);
+		assert(_advance_log(&fs->lfs, 1) == 0);
 	}
 
 	fs->seg.fs = (struct lfs*)&fs->lfs;
@@ -263,7 +269,7 @@ void start_segment(struct fs *fs, struct _ifile *ifile)
 	ifile->segusage[fs->seg.seg_number].su_nsums = 1;
 
 	/* Make a hole for the segment summary. */
-	_advance_log(&fs->lfs, 1);
+	assert(_advance_log(&fs->lfs, 1) == 0);
 	ifile->segusage[fs->seg.seg_number].su_nbytes += fs->lfs.dlfs_sumsize;
 	fs->lfs.dlfs_dmeta++;
 
@@ -293,7 +299,7 @@ void advance_log_by_one(struct fs *fs, struct _ifile *ifile)
 {
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 	if ((fs->lfs.dlfs_offset - fs->lfs.dlfs_curseg + 1) < fs->lfs.dlfs_fsbpseg) {
-		_advance_log(&fs->lfs, 1);
+		assert(_advance_log(&fs->lfs, 1) == 0);
 	} else {
 		assert( ((fs->lfs.dlfs_offset + 1) % fs->lfs.dlfs_fsbpseg) == 0 );
 		write_segment_summary(fs);
@@ -862,6 +868,6 @@ void init_lfs(struct fs *fs, uint64_t nbytes)
 	fs->lfs.dlfs_curseg = (-1)*(DFL_LFSSEG/DFL_LFSBLOCK);
 	fs->seg.seg_number = -1;
 	/* The first block is left empty */
-	_advance_log(&fs->lfs, 1);
+	assert(_advance_log(&fs->lfs, 1) == 0);
 	start_segment(fs, ifile);
 }
