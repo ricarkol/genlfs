@@ -69,9 +69,12 @@ void walk(struct fs *fs, int parent_inum, int inum)
 			case S_IFIFO:  printf("FIFO/pipe\n");               break;
 			case S_IFLNK:  printf("symlink\n");                 break;
 			case S_IFREG:  printf("regular file\n");
-					sprintf(block, "bla bla\n");
-					write_file(fs, block, strlen(block),
+					int fd = open(dirent->d_name, O_RDONLY);
+					assert(fd);
+					write_file_from_fd(fs, fd, sb.st_size,
 						next_inum, LFS_IFREG | 0777, 1, 0);
+					close(fd);
+
 				       dir_add_entry(&dir, dirent->d_name,
 						       next_inum, LFS_DT_REG);
 				       break;
@@ -103,7 +106,9 @@ int main(int argc, char **argv)
 
 	init_lfs(&fs, nbytes);
 
-	chdir(argv[1]);
+	if (chdir(argv[1]) != 0)
+		return 1;
+
 	walk(&fs, ULFS_ROOTINO, ULFS_ROOTINO);
 
 	write_ifile(&fs);
