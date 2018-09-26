@@ -634,7 +634,6 @@ void write_file_from_fd(struct fs *fs, int fd, uint64_t size, int inumber,
 	};
 
 	ifile->cleanerinfo->free_head++;
-	ifile->segusage[fs->seg.seg_number].su_ninos++;
 
 	for (i = 0; ; i++) {
 		int n = read(fd, block, DFL_LFSBLOCK);
@@ -686,6 +685,7 @@ void write_file_from_fd(struct fs *fs, int fd, uint64_t size, int inumber,
 	ifile->ifiles[inumber].if_daddr = fs->lfs.dlfs_offset;
 	ifile->ifiles[inumber].if_nextfree = 0;
 	//segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
+	ifile->segusage[fs->seg.seg_number].su_ninos++;
 	ifile->segusage[fs->seg.seg_number].su_nbytes += DFL_LFSBLOCK;
 	advance_log(fs, ifile, 1);
 
@@ -731,7 +731,6 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber,
 	};
 
 	ifile->cleanerinfo->free_head++;
-	ifile->segusage[fs->seg.seg_number].su_ninos++;
 
 	for (i = 0; i < nblocks; i++) {
 		char *curr_blk = data + (DFL_LFSBLOCK * i);
@@ -781,6 +780,7 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber,
 	ifile->ifiles[inumber].if_daddr = fs->lfs.dlfs_offset;
 	ifile->ifiles[inumber].if_nextfree = 0;
 	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
+	ifile->segusage[fs->seg.seg_number].su_ninos++;
 	ifile->segusage[fs->seg.seg_number].su_nbytes += DFL_LFSBLOCK;
 	advance_log(fs, ifile, 1);
 
@@ -837,6 +837,8 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile, uint32_t nblocks)
 	ifile->ifiles[inumber].if_nextfree = 0;
 	inode_lbn = fs->lfs.dlfs_offset;
 	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
+
+	/* This segment is accounted for the inode. */
 	ifile->segusage[fs->seg.seg_number].su_nbytes += DFL_LFSBLOCK;
 	advance_log(fs, ifile, 1);
 
@@ -844,6 +846,7 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile, uint32_t nblocks)
 		/* single indirect blocks */
 		inode.di_ib[0] = fs->lfs.dlfs_offset;
 		indirect_lbn = fs->lfs.dlfs_offset;
+		ifile->segusage[fs->seg.seg_number].su_nbytes += DFL_LFSBLOCK;
 		advance_log(fs, ifile, 1);
 	}
 
@@ -881,8 +884,6 @@ void write_ifile(struct fs *fs)
 	uint32_t curr = fs->seg.seg_number;
 	while (fs->seg.seg_number == curr)
 		advance_log_by_one(fs, ifile);
-
-	ifile->segusage[fs->seg.seg_number].su_nbytes += nblocks * DFL_LFSBLOCK;
 
 	/* point to ifile inode */
 	fs->lfs.dlfs_idaddr = fs->lfs.dlfs_offset;
