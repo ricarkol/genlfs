@@ -1296,7 +1296,8 @@ struct _ifile {
 	 */
 	char		*data;
 	struct _cleanerinfo32 *cleanerinfo;
-	SEGUSE		*segusage;
+	char		*segusage;
+	//SEGUSE		*segusage;
 	IFILE32		*ifiles;
 };
 
