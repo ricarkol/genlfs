@@ -1,5 +1,5 @@
 # genlfs
-Create a BSD-LFS Log-structured File system in Linux (as in NetBSD's newfs_lfs)
+Create a BSD-LFS Log-structured File system (version 2 32-bits) in Linux (as in NetBSD's newfs_lfs).
 
 # Usage
 
