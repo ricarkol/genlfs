@@ -1,12 +1,12 @@
 all: mkfs test check genlfs
 
-mkfs:
+mkfs: mkfs.c lfs.c lfs_cksum.c
 	gcc -ggdb mkfs.c lfs.c lfs_cksum.c -o mkfs
 
-test:
+test: test.c lfs.c lfs_cksum.c
 	gcc -ggdb test.c lfs.c lfs_cksum.c -o test
 
-check:
+check: check.c lfs_cksum.c
 	gcc -ggdb check.c lfs_cksum.c -o check
 
 genlfs: genlfs.c lfs.c lfs_cksum.c
