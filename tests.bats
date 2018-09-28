@@ -3,6 +3,8 @@
 @test "check against a netbsd lfs formatted disk" {
 	run rm -f test.lfs
 	run ./mkfs test.lfs
+	echo "$output"
+	[ "$status" -eq 0 ]
 	run ./check test.lfs
 	echo "$output"
 	[ "$status" -eq 0 ]
