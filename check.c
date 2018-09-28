@@ -421,19 +421,58 @@ int main(int argc, char **argv)
 	su_flags = 10, su_lastmod = 0}
 	*/
 
-	struct segusage segusages[NSEGS];
-	assert(pread(fd, segusages, sizeof(segusages),
-		SECTOR_TO_BYTES(112)) == sizeof(segusages));
+	SEGUSE *segusages = malloc(sizeof(SEGUSE) * NSEGS);
+	assert(segusages);
+	assert(pread(fd, segusages, sizeof(SEGUSE) * NSEGS,
+		SECTOR_TO_BYTES(112)) == sizeof(SEGUSE) * NSEGS);
 
 	assert(segusages[0].su_nsums == 1);
 	assert(segusages[0].su_ninos == 2);
-	assert(segusages[0].su_nbytes == 40960);
+	assert(segusages[0].su_nbytes == 65536);
 	assert(segusages[0].su_flags == SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK);
 	assert(segusages[0].su_lastmod == 0);
-	for (i = 1; i < NSEGS; i++) {
+	for (i = 1; i < 341; i++) {
 		int found = 0, j;
 		for (j = 1; j < 10; j++) {
 			if (SEGS_TO_FSBLOCKS(i) == sboffs[j])
+				found = 1;
+		}
+		if (found) {
+			assert(segusages[i].su_flags == SEGUSE_SUPERBLOCK);
+		} else {
+			assert(segusages[i].su_flags == SEGUSE_EMPTY);
+		}
+		assert(segusages[i].su_nsums == 0);
+		assert(segusages[i].su_ninos == 0);
+		assert(segusages[i].su_nbytes == 0);
+		assert(segusages[i].su_lastmod == 0);
+	}
+
+	segusages = (SEGUSE *)((uint64_t)segusages + DFL_LFSBLOCK);
+
+	for (i = 0; i < 341; i++) {
+		int found = 0, j;
+		for (j = 1; j < 10; j++) {
+			if (SEGS_TO_FSBLOCKS(i + 341) == sboffs[j])
+				found = 1;
+		}
+		if (found) {
+			assert(segusages[i].su_flags == SEGUSE_SUPERBLOCK);
+		} else {
+			assert(segusages[i].su_flags == SEGUSE_EMPTY);
+		}
+		assert(segusages[i].su_nsums == 0);
+		assert(segusages[i].su_ninos == 0);
+		assert(segusages[i].su_nbytes == 0);
+		assert(segusages[i].su_lastmod == 0);
+	}
+
+	segusages = (SEGUSE *)((uint64_t)segusages + DFL_LFSBLOCK);
+
+	for (i = 0; i < 340; i++) {
+		int found = 0, j;
+		for (j = 1; j < 10; j++) {
+			if (SEGS_TO_FSBLOCKS(i + 341 + 341) == sboffs[j])
 				found = 1;
 		}
 		if (found) {
