@@ -74,23 +74,21 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <err.h>
-#include <time.h>
-#include <stdlib.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
+#include "config.h"
 #include "lfs.h"
 #include "lfs_accessors.h"
-#include "config.h"
 
-
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	struct fs fs;
 	uint32_t avail_segs;
 	off_t off;
