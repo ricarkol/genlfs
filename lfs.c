@@ -195,8 +195,8 @@ void segment_add_datasum(struct segment *seg, char *block, uint32_t size) {
 	for (i = 0; i < size; i += DFL_LFSBLOCK) {
 		/* The final checksum will be done with a sequence of the first
 		 * byte of every block */
-		memcpy(seg, &block[i], sizeof(int32_t));
-		seg->cur_data_for_cksum++;
+		assert(seg->cksum_idx < MAX_BLOCKS_PER_SEG);
+		seg->data_for_cksum[seg->cksum_idx++] = block[i];
 	}
 }
 
@@ -241,6 +241,8 @@ void start_segment(struct fs *fs, struct _ifile *ifile) {
 	fs->lfs.dlfs_curseg += DFL_LFSSEG / DFL_LFSBLOCK;
 	fs->lfs.dlfs_nextseg += DFL_LFSSEG / DFL_LFSBLOCK;
 	fs->seg.seg_number++;
+
+	fs->seg.cksum_idx = 0;
 
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	if (segusage->su_flags & SEGUSE_SUPERBLOCK) {
@@ -292,8 +294,7 @@ void write_segment_summary(struct fs *fs) {
 
 	ssp->ss_create = time(0);
 	ssp->ss_datasum = cksum(fs->seg.data_for_cksum,
-				((uint64_t)fs->seg.cur_data_for_cksum -
-				 (uint64_t)fs->seg.data_for_cksum));
+					fs->seg.cksum_idx * sizeof(int32_t));
 	ssp->ss_sumsum = cksum((char *)fs->seg.segsum + sumstart,
 			       fs->lfs.dlfs_sumsize - sumstart);
 
@@ -649,7 +650,8 @@ void write_file_from_fd(struct fs *fs, int fd, uint64_t size, int inumber,
 		int n = read(fd, block, DFL_LFSBLOCK);
 		if (n == 0)
 			break;
-		// segment_add_datasum(&fs->seg, block, n);
+		assert(n <= DFL_LFSBLOCK);
+		segment_add_datasum(&fs->seg, block, n);
 		assert(pwrite64(fs->fd, block, DFL_LFSBLOCK,
 				FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset)) ==
 		       DFL_LFSBLOCK);
@@ -697,7 +699,7 @@ void write_file_from_fd(struct fs *fs, int fd, uint64_t size, int inumber,
 	assert(inumber < MAX_INODES);
 	ifile->ifiles[inumber].if_daddr = fs->lfs.dlfs_offset;
 	ifile->ifiles[inumber].if_nextfree = 0;
-	// segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
+	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_ninos += 1;
 	segusage->su_nbytes += DFL_LFSBLOCK;
@@ -999,8 +1001,6 @@ void init_lfs(struct fs *fs, uint64_t nbytes) {
 
 	init_ifile(fs);
 	init_sboffs(fs, ifile);
-
-	fs->seg.cur_data_for_cksum = &fs->seg.data_for_cksum[0];
 
 	/* XXX: start_segment starts by advancing seg_number and dlfs_curseg */
 	fs->lfs.dlfs_curseg = (-1) * (DFL_LFSSEG / DFL_LFSBLOCK);

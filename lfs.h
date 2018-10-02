@@ -1143,7 +1143,7 @@ struct segment {
 	union lfs_blocks start_lbp;	/* beginning lbn for this set */
 
 	int32_t		data_for_cksum[MAX_BLOCKS_PER_SEG];/* for segment data checksums */
-	int32_t		*cur_data_for_cksum;
+	int32_t		cksum_idx;
 	int32_t		disk_bno;	/* expected location on disk */
 
 #define SEGM_CKP	0x0001		/* doing a checkpoint */
