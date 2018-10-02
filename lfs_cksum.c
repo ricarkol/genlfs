@@ -62,6 +62,8 @@
 #include <sys/cdefs.h>
 
 #include <sys/param.h>
+#undef DEV_BSIZE
+
 #ifdef _KERNEL
 # include <sys/systm.h>
 # include <sys/lock.h>
