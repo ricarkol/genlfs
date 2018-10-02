@@ -353,6 +353,7 @@ void dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
 	assert(dir->curr >= dir->last);
 	assert(dir->curr < LFS_DIRBLKSIZ);
 	assert(reclen % 4 == 0);
+	assert((reclen & 0x3) == 0);
 
 	dir->last = dir->curr;
 	struct lfs_dirheader32 d = {.dh_ino = inumber,
@@ -379,6 +380,7 @@ void dir_done(struct directory *dir) {
 	struct lfs_dirheader32 *last =
 	    (struct lfs_dirheader32 *)&dir->data[dir->last];
 	last->dh_reclen = LFS_DIRBLKSIZ - dir->last;
+	assert((last->dh_reclen & 0x3) == 0);
 }
 
 /*
