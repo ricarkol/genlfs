@@ -1324,8 +1324,6 @@ int write_superblock(struct fs *fs);
 void write_segment_summary(struct fs *fs);
 void write_file(struct fs *fs, char *data, uint64_t size, int inumber,
 		int mode, int nlink, int flags);
-void write_file_from_fd(struct fs *fs, int fd, uint64_t size, int inumber,
-		int mode, int nlink, int flags);
 
 void dir_add_entry(struct directory *dir, char *name, int inumber, int type);
 void dir_done(struct directory *dir);

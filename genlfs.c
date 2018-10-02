@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/mman.h>
 
 #include "config.h"
 #include "lfs.h"
@@ -73,11 +74,14 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 			printf("symlink\n");
 			break;
 		case S_IFREG:
-			printf("regular file\n");
+			printf("regular file: %s\n", dirent->d_name);
 			int fd = open(dirent->d_name, O_RDONLY);
 			assert(fd);
-			write_file_from_fd(fs, fd, sb.st_size, next_inum,
+			void *addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+			assert(addr);
+			write_file(fs, (char *)addr, sb.st_size, next_inum,
 					   LFS_IFREG | 0777, 1, 0);
+			munmap(addr, sb.st_size);
 			close(fd);
 
 			dir_add_entry(&dir, dirent->d_name, next_inum,

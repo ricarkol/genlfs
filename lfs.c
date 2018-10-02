@@ -476,8 +476,6 @@ void add_finfo_inode(struct fs *fs, uint64_t size, uint32_t inumber) {
 	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
 	uint32_t i;
 
-	assert(size > 0);
-
 	finfo->fi_nblocks = nblocks;
 	finfo->fi_version = 1;
 	finfo->fi_ino = inumber;
@@ -485,10 +483,18 @@ void add_finfo_inode(struct fs *fs, uint64_t size, uint32_t inumber) {
 	seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(struct finfo32));
 	IINFO32 *blocks = (IINFO32 *)seg->fip;
 	for (i = 0; i < finfo->fi_nblocks; i++) {
+
+		uint64_t tip = (uint64_t)seg->fip - (uint64_t)seg->segsum;
+		if (tip > fs->lfs.dlfs_sumsize) {
+			/*
+			 * TODO: we should write the remaining blocks into the
+			 * next segment.
+			 */
+			break;
+		}
+
 		blocks[i].ii_block = i;
 		seg->fip = (FINFO *)((uint64_t)seg->fip + sizeof(IINFO32));
-		assert(((char *)seg->fip - (char *)seg->segsum) <=
-		       fs->lfs.dlfs_sumsize);
 	}
 
 	((struct segsum32 *)seg->segsum)->ss_ninos++;
@@ -602,112 +608,6 @@ int write_triple_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
 	return off;
 }
 
-void write_file_from_fd(struct fs *fs, int fd, uint64_t size, int inumber,
-			int mode, int nlink, int flags) {
-	struct _ifile *ifile = &fs->ifile;
-	uint32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
-	uint32_t i, j;
-	int *blk_ptrs;
-	int *indirect_blks = malloc(num_iblocks(nblocks) * DFL_LFSBLOCK);
-	assert(indirect_blks);
-	char block[DFL_LFSBLOCK];
-	SEGUSE *segusage;
-
-	/*
-	 * TODO: We can't enable this at the moment, because the segment size
-	 * is limited to 1 block, and that's not enough for large files.
-	 */
-	// add_finfo_inode(fs, size, inumber);
-	assert(fs->lfs.dlfs_inopb == 1);
-	fs->lfs.dlfs_dmeta++;
-
-	assert(MAXFILESIZE32 > nblocks * DFL_LFSBLOCK);
-
-	/* Write file inode */
-	struct lfs32_dinode inode = {
-	    .di_mode = mode,
-	    .di_nlink = nlink,
-	    .di_inumber = inumber,
-	    .di_size = size,
-	    .di_atime = time(0),
-	    .di_atimensec = 0,
-	    .di_mtime = time(0),
-	    .di_mtimensec = 0,
-	    .di_ctime = time(0),
-	    .di_ctimensec = 0,
-	    .di_db = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	    .di_ib = {0, 0, 0},
-	    .di_flags = flags,
-	    .di_blocks = nblocks,
-	    .di_gen = 1,
-	    .di_uid = 0,
-	    .di_gid = 0,
-	    .di_modrev = 0};
-
-	ifile->cleanerinfo->free_head++;
-
-	for (i = 0;; i++) {
-		int n = read(fd, block, DFL_LFSBLOCK);
-		if (n == 0)
-			break;
-		assert(n <= DFL_LFSBLOCK);
-		segment_add_datasum(&fs->seg, block, n);
-		assert(pwrite64(fs->fd, block, DFL_LFSBLOCK,
-				FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset)) ==
-		       DFL_LFSBLOCK);
-		if (i < ULFS_NDADDR) {
-			inode.di_db[i] = fs->lfs.dlfs_offset;
-		} else {
-			indirect_blks[i - ULFS_NDADDR] = fs->lfs.dlfs_offset;
-		}
-		segusage = SEGUSE_GET(fs, fs->seg.seg_number);
-		segusage->su_nbytes += DFL_LFSBLOCK;
-		advance_log(fs, ifile, 1);
-	}
-
-	nblocks -= MIN(nblocks, ULFS_NDADDR);
-	blk_ptrs = indirect_blks;
-
-	if (nblocks > 0) {
-		uint32_t _nblocks = MIN(nblocks, NPTR32);
-		inode.di_ib[0] =
-		    write_single_indirect(fs, ifile, blk_ptrs, _nblocks);
-		nblocks -= _nblocks;
-		blk_ptrs += _nblocks;
-	}
-
-	if (nblocks > 0) {
-		uint32_t _nblocks = MIN(nblocks, NPTR32 * NPTR32);
-		inode.di_ib[1] =
-		    write_double_indirect(fs, ifile, blk_ptrs, _nblocks);
-		nblocks -= _nblocks;
-		blk_ptrs += _nblocks;
-	}
-
-	if (nblocks > 0) {
-		uint32_t _nblocks = MIN(nblocks, NPTR32 * NPTR32 * NPTR32);
-		inode.di_ib[2] =
-		    write_triple_indirect(fs, ifile, blk_ptrs, _nblocks);
-		nblocks -= _nblocks;
-		blk_ptrs += _nblocks;
-	}
-
-	/* Write the inode */
-	assert(pwrite64(fs->fd, &inode, sizeof(inode),
-			FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset)) ==
-	       sizeof(inode));
-	assert(inumber < MAX_INODES);
-	ifile->ifiles[inumber].if_daddr = fs->lfs.dlfs_offset;
-	ifile->ifiles[inumber].if_nextfree = 0;
-	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
-	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
-	segusage->su_ninos += 1;
-	segusage->su_nbytes += DFL_LFSBLOCK;
-	advance_log(fs, ifile, 1);
-
-	free(indirect_blks);
-}
-
 void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 		int nlink, int flags) {
 	struct _ifile *ifile = &fs->ifile;
@@ -718,6 +618,10 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	assert(indirect_blks);
 	SEGUSE *segusage;
 
+	/*
+	 * TODO: We can't enable this at the moment, because the segment size
+	 * is limited to 1 block, and that's not enough for large files.
+	 */
 	add_finfo_inode(fs, size, inumber);
 	assert(fs->lfs.dlfs_inopb == 1);
 	fs->lfs.dlfs_dmeta++;
