@@ -32,8 +32,8 @@ int get_next_inum(void) { return ++next_inum; }
 void walk(struct fs *fs, int parent_inum, int inum) {
 	DIR *d;
 	struct dirent *dirent;
-	struct directory dir = {0};
-	char block[DFL_LFSBLOCK];
+	struct directory *dir = calloc(1, sizeof(struct directory));
+	assert(dir);
 
 	d = opendir(".");
 
@@ -60,7 +60,7 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 				break;
 			if (strcmp(dirent->d_name, "..") == 0)
 				break;
-			dir_add_entry(&dir, dirent->d_name, next_inum,
+			dir_add_entry(dir, dirent->d_name, next_inum,
 				      LFS_DT_DIR);
 			printf("directory\n");
 			chdir(dirent->d_name);
@@ -73,20 +73,21 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 		case S_IFLNK:
 			printf("symlink\n");
 			break;
-		case S_IFREG:
-			printf("regular file: %s\n", dirent->d_name);
+		case S_IFREG: {
 			int fd = open(dirent->d_name, O_RDONLY);
 			assert(fd);
 			void *addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+			printf("regular file (%d): %s\n", fd, dirent->d_name);
 			assert(addr);
 			write_file(fs, (char *)addr, sb.st_size, next_inum,
 					   LFS_IFREG | 0777, 1, 0);
 			munmap(addr, sb.st_size);
 			close(fd);
 
-			dir_add_entry(&dir, dirent->d_name, next_inum,
+			dir_add_entry(dir, dirent->d_name, next_inum,
 				      LFS_DT_REG);
 			break;
+		}
 		case S_IFSOCK:
 			printf("socket\n");
 			break;
@@ -96,10 +97,11 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 		}
 	}
 
-	dir_add_entry(&dir, ".", inum, LFS_DT_DIR);
-	dir_add_entry(&dir, "..", parent_inum, LFS_DT_DIR);
-	dir_done(&dir);
-	write_file(fs, &dir.data[0], 512, inum, LFS_IFDIR | 0755, inum, 0);
+	dir_add_entry(dir, ".", inum, LFS_DT_DIR);
+	dir_add_entry(dir, "..", parent_inum, LFS_DT_DIR);
+	dir_done(dir);
+	write_file(fs, dir->data, 512, inum, LFS_IFDIR | 0755, inum, 0);
+	free(dir);
 
 	closedir(d);
 }

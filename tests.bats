@@ -157,6 +157,8 @@ function create_tree() {
 @test "genlfs: check tree" {
 	create_tree
 	run ./genlfs test_dir test.lfs
+	echo "$output"
+	[ "$status" -eq 0 ]
 
 	run ./ukvm-bin.seccomp --disk=test.lfs blk-rumprun.seccomp '{"cmdline":"blk /test","blk":{"source":"etfs","path":"/dev/ld0a","fstype":"blk","mountpoint":"/test"}}'
 	echo "$output"
