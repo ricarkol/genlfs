@@ -117,7 +117,7 @@ int main(int argc, char **argv)
 	dir_add_entry(&dir, "test2", 4, LFS_DT_REG);
 	dir_add_entry(&dir, "test3", 5, LFS_DT_REG);
 	dir_done(&dir);
-	write_file(&fs, &dir.data[0], 512, ULFS_ROOTINO,
+	write_file(&fs, &dir.data[0], LFS_DIRBLKSIZ, ULFS_ROOTINO,
 		LFS_IFDIR | 0755, 2, 0);
 
 	char *block = malloc(FSIZE);
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
 	dir_add_entry(&dir2, "..", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir2, "data2", 9, LFS_DT_REG);
 	dir_done(&dir2);
-	write_file(&fs, &dir2.data[0], 512, 4,
+	write_file(&fs, &dir2.data[0], LFS_DIRBLKSIZ, 4,
 		LFS_IFDIR | 0755, 2, 0);
 
 	sprintf(block, "/test2/data2 bla bla\n");
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
 	dir_add_entry(&dir3, "test4", 7, LFS_DT_DIR);
 	dir_add_entry(&dir3, "data3", 6, LFS_DT_REG);
 	dir_done(&dir3);
-	write_file(&fs, &dir3.data[0], 512, 5,
+	write_file(&fs, &dir3.data[0], LFS_DIRBLKSIZ, 5,
 		LFS_IFDIR | 0755, 2, 0);
 
 	sprintf(block, "/test3/data3 bla bla\n");
@@ -155,7 +155,7 @@ int main(int argc, char **argv)
 	dir_add_entry(&dir4, "..", 5, LFS_DT_DIR);
 	dir_add_entry(&dir4, "data4", 8, LFS_DT_REG);
 	dir_done(&dir4);
-	write_file(&fs, &dir4.data[0], 512, 7,
+	write_file(&fs, &dir4.data[0], LFS_DIRBLKSIZ, 7,
 		LFS_IFDIR | 0755, 2, 0);
 
 	sprintf(block, "/test3/test4/data4 bla bla\n");

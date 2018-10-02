@@ -117,7 +117,7 @@ u_int32_t cksum(void *str, size_t len);
 #define LOG2(X)                                                                \
 	((unsigned)(8 * sizeof(unsigned long long) - __builtin_clzll((X)) - 1))
 
-#define SECTOR_TO_BYTES(_S) (512 * (_S))
+#define SECTOR_TO_BYTES(_S) (DEV_BSIZE * (_S))
 #define FSBLOCK_TO_BYTES(_S) (DFL_LFSBLOCK * (uint64_t)(_S))
 #define SEGS_TO_FSBLOCKS(_S) (((_S) * (uint64_t)DFL_LFSSEG) / DFL_LFSBLOCK)
 
@@ -162,7 +162,7 @@ static const struct dlfs dlfs32_default = {
     .dlfs_bmask = DFL_LFSBLOCK_MASK,
     .dlfs_ffmask = DFL_LFS_FFMASK,
     .dlfs_fbmask = DFL_LFS_FBMASK,
-    .dlfs_blktodb = LOG2(DFL_LFSBLOCK / 512),
+    .dlfs_blktodb = LOG2(DFL_LFSBLOCK / DEV_BSIZE),
     .dlfs_sushift = 0,
     .dlfs_maxsymlinklen = LFS32_MAXSYMLINKLEN,
     .dlfs_sboffs = {0},
@@ -177,7 +177,7 @@ static const struct dlfs dlfs32_default = {
     .dlfs_inodefmt = LFS_44INODEFMT,
     .dlfs_interleave = 0,
     .dlfs_ident = 0,
-    .dlfs_fsbtodb = LOG2(DFL_LFSBLOCK / 512),
+    .dlfs_fsbtodb = LOG2(DFL_LFSBLOCK / DEV_BSIZE),
 
     .dlfs_pad = {0},
     .dlfs_cksum = 0};
@@ -351,7 +351,7 @@ void dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
 	assert(namlen < LFS_MAXNAMLEN);
 	assert(dir->curr >= 0);
 	assert(dir->curr >= dir->last);
-	assert(dir->curr < 512);
+	assert(dir->curr < LFS_DIRBLKSIZ);
 	assert(reclen % 4 == 0);
 
 	dir->last = dir->curr;
@@ -366,19 +366,19 @@ void dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
 
 	assert(dir->curr >= 0);
 	assert(dir->curr >= dir->last);
-	assert(dir->curr < 512);
-	assert(dir->last < 512);
+	assert(dir->curr < LFS_DIRBLKSIZ);
+	assert(dir->last < LFS_DIRBLKSIZ);
 }
 
-/* The last directory entry record len has to fill the remaining 512 bytes. */
+/* The last directory entry record len has to fill the remaining LFS_DIRBLKSIZ bytes. */
 void dir_done(struct directory *dir) {
 	assert(dir->curr > 0);
 	assert(dir->last < dir->curr);
-	assert(dir->last < 512);
-	assert(dir->curr < 512);
+	assert(dir->last < LFS_DIRBLKSIZ);
+	assert(dir->curr < LFS_DIRBLKSIZ);
 	struct lfs_dirheader32 *last =
 	    (struct lfs_dirheader32 *)&dir->data[dir->last];
-	last->dh_reclen = 512 - dir->last;
+	last->dh_reclen = LFS_DIRBLKSIZ - dir->last;
 }
 
 /*
@@ -392,7 +392,7 @@ void write_empty_root_dir(struct fs *fs) {
 	dir_done(&dir);
 
 	assert(fs->lfs.dlfs_offset == 3);
-	write_file(fs, &dir.data[0], 512, ULFS_ROOTINO, LFS_IFDIR | 0755, 2, 0);
+	write_file(fs, &dir.data[0], LFS_DIRBLKSIZ, ULFS_ROOTINO, LFS_IFDIR | 0755, 2, 0);
 }
 
 void init_ifile(struct fs *fs) {

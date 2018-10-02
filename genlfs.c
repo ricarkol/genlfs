@@ -100,7 +100,7 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 	dir_add_entry(dir, ".", inum, LFS_DT_DIR);
 	dir_add_entry(dir, "..", parent_inum, LFS_DT_DIR);
 	dir_done(dir);
-	write_file(fs, dir->data, 512, inum, LFS_IFDIR | 0755, inum, 0);
+	write_file(fs, dir->data, LFS_DIRBLKSIZ, inum, LFS_IFDIR | 0755, inum, 0);
 	free(dir);
 
 	closedir(d);

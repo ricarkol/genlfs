@@ -328,6 +328,8 @@
  * FSFMT(), LFS_OLDDIRFMT, and LFS_NEWDIRFMT should be removed. (XXX)
  */
 
+#define DEV_BSIZE	512
+
 /*
  * Directory block size.
  */
@@ -1312,7 +1314,7 @@ struct fs {
 };
 
 struct directory {
-	char	data[512];
+	char	data[LFS_DIRBLKSIZ];
 	int 	curr;
 	int 	last;
 };
