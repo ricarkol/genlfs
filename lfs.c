@@ -359,12 +359,8 @@ int dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
 		if (dir->prev < dir->curr) {
 			struct lfs_dirheader32 *prev =
 			    (struct lfs_dirheader32 *)&dir->data[dir->prev];
-			printf("curr:%d reclen:%d\n", dir->curr, reclen);
-			printf("prev:%d prev_reclen:%d\n", dir->prev, prev->dh_reclen);
 			prev->dh_reclen = LFS_DIRBLKSIZ - (dir->prev % LFS_DIRBLKSIZ);
 
-			printf("curr:%d reclen:%d\n", dir->curr, reclen);
-			printf("prev:%d prev_reclen:%d\n", dir->prev, prev->dh_reclen);
 			assert(prev->dh_reclen <= LFS_DIRBLKSIZ);
 			assert((dir->prev + prev->dh_reclen) % LFS_DIRBLKSIZ == 0);
 			assert((prev->dh_reclen & 0x3) == 0);
@@ -407,8 +403,6 @@ void dir_done(struct directory *dir) {
 	assert(prev->dh_reclen <= LFS_DIRBLKSIZ);
 	assert(dir->curr % LFS_DIRBLKSIZ == 0);
 	assert(((dir->prev % LFS_DIRBLKSIZ) + prev->dh_reclen) % LFS_DIRBLKSIZ == 0);
-	printf("prev: off=%d reclen=%d\n", dir->prev, prev->dh_reclen);
-
 	assert((prev->dh_reclen & 0x3) == 0);
 }
 
