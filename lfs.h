@@ -1313,10 +1313,10 @@ struct fs {
 	struct _ifile	ifile;
 };
 
+#define DIRSIZE		8192
 struct directory {
-	char	data[LFS_DIRBLKSIZ];
-	int 	curr;
-	int 	last;
+	char	data[DIRSIZE];
+	int 	curr, prev;
 };
 
 void init_lfs(struct fs *fs, uint64_t nbytes);
@@ -1327,7 +1327,7 @@ void write_segment_summary(struct fs *fs);
 void write_file(struct fs *fs, char *data, uint64_t size, int inumber,
 		int mode, int nlink, int flags);
 
-void dir_add_entry(struct directory *dir, char *name, int inumber, int type);
+int dir_add_entry(struct directory *dir, char *name, int inumber, int type);
 void dir_done(struct directory *dir);
 
 #endif /* !_UFS_LFS_LFS_H_ */

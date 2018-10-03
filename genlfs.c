@@ -100,7 +100,10 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 	dir_add_entry(dir, ".", inum, LFS_DT_DIR);
 	dir_add_entry(dir, "..", parent_inum, LFS_DT_DIR);
 	dir_done(dir);
-	write_file(fs, dir->data, LFS_DIRBLKSIZ, inum, LFS_IFDIR | 0755, 1, 0);
+
+	/* TODO: nlinks should be 2 for root. What about others (does ..
+	 * count)? */
+	write_file(fs, dir->data, dir->curr, inum, LFS_IFDIR | 0755, 1, 0);
 	free(dir);
 
 	closedir(d);

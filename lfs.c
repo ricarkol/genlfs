@@ -328,7 +328,7 @@ void advance_log(struct fs *fs, struct _ifile *ifile, uint32_t nr) {
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 }
 
-void dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
+int dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
 	int namlen = strnlen(name, LFS_MAXNAMLEN);
 	int reclen = namlen + sizeof(struct lfs_dirheader32);
 
@@ -349,13 +349,36 @@ void dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
 	reclen = 4 * ((reclen + 3 + 1) / 4);
 
 	assert(namlen < LFS_MAXNAMLEN);
+	assert(reclen < LFS_DIRBLKSIZ);
 	assert(dir->curr >= 0);
-	assert(dir->curr >= dir->last);
-	assert(dir->curr < LFS_DIRBLKSIZ);
 	assert(reclen % 4 == 0);
-	assert((reclen & 0x3) == 0);
 
-	dir->last = dir->curr;
+	if ((dir->curr % LFS_DIRBLKSIZ + reclen) > LFS_DIRBLKSIZ) {
+
+		/* Round the curlen of the previous entry to LFS_DIRBLKSIZ. */
+		if (dir->prev < dir->curr) {
+			struct lfs_dirheader32 *prev =
+			    (struct lfs_dirheader32 *)&dir->data[dir->prev];
+			printf("curr:%d reclen:%d\n", dir->curr, reclen);
+			printf("prev:%d prev_reclen:%d\n", dir->prev, prev->dh_reclen);
+			prev->dh_reclen = LFS_DIRBLKSIZ - (dir->prev % LFS_DIRBLKSIZ);
+
+			printf("curr:%d reclen:%d\n", dir->curr, reclen);
+			printf("prev:%d prev_reclen:%d\n", dir->prev, prev->dh_reclen);
+			assert(prev->dh_reclen <= LFS_DIRBLKSIZ);
+			assert((dir->prev + prev->dh_reclen) % LFS_DIRBLKSIZ == 0);
+			assert((prev->dh_reclen & 0x3) == 0);
+		}
+
+		/* Move this entry to the next BLK. */
+		dir->curr += LFS_DIRBLKSIZ - (dir->curr % LFS_DIRBLKSIZ);
+		assert(dir->curr % LFS_DIRBLKSIZ == 0);
+	}
+
+	if (dir->curr >= DIRSIZE)
+		return 1;
+
+	dir->prev = dir->curr;
 	struct lfs_dirheader32 d = {.dh_ino = inumber,
 				    .dh_reclen = reclen,
 				    .dh_type = type,
@@ -366,21 +389,27 @@ void dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
 	dir->curr += reclen - sizeof(d);
 
 	assert(dir->curr >= 0);
-	assert(dir->curr >= dir->last);
-	assert(dir->curr < LFS_DIRBLKSIZ);
-	assert(dir->last < LFS_DIRBLKSIZ);
+	assert(dir->curr < DIRSIZE);
+
+	return 0;
 }
 
 /* The last directory entry record len has to fill the remaining LFS_DIRBLKSIZ bytes. */
 void dir_done(struct directory *dir) {
 	assert(dir->curr > 0);
-	assert(dir->last < dir->curr);
-	assert(dir->last < LFS_DIRBLKSIZ);
-	assert(dir->curr < LFS_DIRBLKSIZ);
-	struct lfs_dirheader32 *last =
-	    (struct lfs_dirheader32 *)&dir->data[dir->last];
-	last->dh_reclen = LFS_DIRBLKSIZ - dir->last;
-	assert((last->dh_reclen & 0x3) == 0);
+	assert(dir->curr < DIRSIZE);
+	
+	struct lfs_dirheader32 *prev =
+		    (struct lfs_dirheader32 *)&dir->data[dir->prev];
+	prev->dh_reclen = LFS_DIRBLKSIZ - (dir->prev % LFS_DIRBLKSIZ);
+	dir->curr = dir->prev + prev->dh_reclen;
+
+	assert(prev->dh_reclen <= LFS_DIRBLKSIZ);
+	assert(dir->curr % LFS_DIRBLKSIZ == 0);
+	assert(((dir->prev % LFS_DIRBLKSIZ) + prev->dh_reclen) % LFS_DIRBLKSIZ == 0);
+	printf("prev: off=%d reclen=%d\n", dir->prev, prev->dh_reclen);
+
+	assert((prev->dh_reclen & 0x3) == 0);
 }
 
 /*
@@ -394,7 +423,10 @@ void write_empty_root_dir(struct fs *fs) {
 	dir_done(&dir);
 
 	assert(fs->lfs.dlfs_offset == 3);
-	write_file(fs, &dir.data[0], LFS_DIRBLKSIZ, ULFS_ROOTINO, LFS_IFDIR | 0755, 2, 0);
+	printf("%d\n", dir.curr);
+	assert(dir.curr == LFS_DIRBLKSIZ);
+	write_file(fs, &dir.data[0], dir.curr, ULFS_ROOTINO,
+			LFS_IFDIR | 0755, 2, 0);
 }
 
 void init_ifile(struct fs *fs) {

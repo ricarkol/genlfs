@@ -17,6 +17,7 @@ function create_tree() {
 	echo "test3/data3 bla bla" > test_dir/test3/data3
 	mkdir -p test_dir/test3/test4
 	echo "test3/test4/data4 bla bla" > test_dir/test3/test4/data4
+	for i in `seq 1 100`; do echo $i > test_dir/blablabasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf$i; done
 }
 
 @test "mkfs: check against a netbsd lfs formatted disk" {
