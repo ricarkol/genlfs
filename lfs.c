@@ -98,7 +98,10 @@ u_int32_t cksum(void *str, size_t len);
 
 /* size args */
 #define NSUPERBLOCKS LFS_MAXNUMSB
-#define IFILE_MAP_SZ 1
+#ifndef IFILE_MAP_SZ
+#define IFILE_MAP_SZ	16
+#endif
+
 #define MAX_INODES ((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32))
 
 /*
@@ -862,7 +865,7 @@ void write_ifile(struct fs *fs) {
 	ifile->cleanerinfo->dirty = fs->lfs.dlfs_curseg + 1;
 	ifile->cleanerinfo->bfree = fs->lfs.dlfs_bfree;
 	ifile->cleanerinfo->avail = fs->lfs.dlfs_avail;
-	assert(ifile->cleanerinfo->free_tail == 408);
+	assert(ifile->cleanerinfo->free_tail == (MAX_INODES - 1));
 	assert(fs->lfs.dlfs_cleansz == 1);
 
 	/* IFILE/SEGUSE */

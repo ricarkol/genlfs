@@ -21,7 +21,7 @@ function create_tree() {
 }
 
 @test "mkfs: check against a netbsd lfs formatted disk" {
-	run ./mkfs test.lfs
+	run ./mkfs_small test.lfs
 	echo "$output"
 	[ "$status" -eq 0 ]
 	run ./check test.lfs
@@ -30,7 +30,7 @@ function create_tree() {
 }
 
 @test "mkfs: check against a netbsd lfs formatted disk (fail)" {
-	run ./mkfs test.lfs
+	run ./mkfs_small test.lfs
 	# this should make the ./check fail
 	run ./ukvm-bin.seccomp --disk=test.lfs blk-rumprun.seccomp '{"cmdline":"blk /test","blk":{"source":"etfs","path":"/dev/ld0a","fstype":"blk","mountpoint":"/test"}}'
 	[[ "$output" == *"."* ]]

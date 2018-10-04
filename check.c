@@ -66,9 +66,9 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "config.h"
 #include "lfs.h"
 #include "lfs_accessors.h"
-#include "config.h"
 
 #define	SF_IMMUTABLE	0x00020000	/* file may not be changed */
 
@@ -80,7 +80,7 @@ u_int32_t cksum(void *str, size_t len);
 /* size args */
 #define SIZE		(1024 * 1024 * 1024)
 #define NSUPERBLOCKS	LFS_MAXNUMSB
-#define MAX_INODES	(DFL_LFSBLOCK / sizeof(IFILE32))
+#define MAX_INODES	((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32))
 
 #define NSEGS		((SIZE/DFL_LFSSEG) - 1)	/* number of segments */
 #define RESVSEG		(((NSEGS/DFL_MIN_FREE_SEGS) / 2) + 1)
@@ -504,8 +504,9 @@ int main(int argc, char **argv)
 	{if_version = 1, if_daddr = 0, if_nextfree = 9, if_atime_sec = 0, if_atime_nsec = 0},
 	{if_version = 1, if_daddr = 0, if_nextfree = 10, if_atime_sec = 0, if_atime_nsec = 0}}
 	*/
+	assert(IFILE_MAP_SZ == 1);
 	IFILE32 ifiles[MAX_INODES];
-	assert(sizeof(ifiles) < 8192);
+	assert(sizeof(ifiles) <= 8192);
 	assert(pread(fd, ifiles, sizeof(ifiles),
 		SECTOR_TO_BYTES(160)) == sizeof(ifiles));
 

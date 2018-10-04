@@ -1313,7 +1313,10 @@ struct fs {
 	struct _ifile	ifile;
 };
 
-#define DIRSIZE		8192
+#ifndef DIRSIZE
+#define DIRSIZE		(8192 * 4)
+#endif
+
 struct directory {
 	char	data[DIRSIZE];
 	int 	curr, prev;
