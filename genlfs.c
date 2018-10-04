@@ -45,7 +45,6 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 		struct stat sb;
 		int next_inum = get_next_inum();
 
-		printf("%d %s\n", dirent->d_ino, dirent->d_name);
 		lstat(dirent->d_name, &sb);
 
 		switch (sb.st_mode & S_IFMT) {
@@ -60,9 +59,9 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 				break;
 			if (strcmp(dirent->d_name, "..") == 0)
 				break;
-			dir_add_entry(dir, dirent->d_name, next_inum,
-				      LFS_DT_DIR);
-			printf("directory\n");
+			assert(dir_add_entry(dir, dirent->d_name, next_inum,
+				      LFS_DT_DIR) == 0);
+			printf("directory (%d): %s\n", next_inum, dirent->d_name);
 			chdir(dirent->d_name);
 			walk(fs, inum, next_inum);
 			chdir("..");
@@ -77,15 +76,15 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 			int fd = openat(AT_FDCWD, dirent->d_name, O_RDONLY);
 			assert(fd > 0);
 			void *addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-			printf("regular file (%d): %s\n", fd, dirent->d_name);
+			printf("regular file (%d): %s\n", next_inum, dirent->d_name);
 			assert(addr);
 			write_file(fs, (char *)addr, sb.st_size, next_inum,
 					   LFS_IFREG | 0777, 1, 0);
-			//munmap(addr, sb.st_size);
-			//close(fd);
+			munmap(addr, sb.st_size);
+			close(fd);
 
-			dir_add_entry(dir, dirent->d_name, next_inum,
-				      LFS_DT_REG);
+			assert(dir_add_entry(dir, dirent->d_name, next_inum,
+				      LFS_DT_REG) == 0);
 			break;
 		}
 		case S_IFSOCK:
