@@ -74,15 +74,15 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 			printf("symlink\n");
 			break;
 		case S_IFREG: {
-			int fd = open(dirent->d_name, O_RDONLY);
-			assert(fd);
+			int fd = openat(AT_FDCWD, dirent->d_name, O_RDONLY);
+			assert(fd > 0);
 			void *addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 			printf("regular file (%d): %s\n", fd, dirent->d_name);
 			assert(addr);
 			write_file(fs, (char *)addr, sb.st_size, next_inum,
 					   LFS_IFREG | 0777, 1, 0);
-			munmap(addr, sb.st_size);
-			close(fd);
+			//munmap(addr, sb.st_size);
+			//close(fd);
 
 			dir_add_entry(dir, dirent->d_name, next_inum,
 				      LFS_DT_REG);
