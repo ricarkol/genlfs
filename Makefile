@@ -8,7 +8,7 @@ check: check.c lfs_cksum.c
 	gcc -DIFILE_MAP_SZ=1 -DDIRSIZE=8192 -ggdb check.c lfs_cksum.c -o $@
 
 mkfs: mkfs.c lfs.c lfs_cksum.c
-	gcc -DIFILE_MAP_SZ=1 -DDIRSIZE=8192 -ggdb mkfs.c lfs.c lfs_cksum.c -o $@
+	gcc -ggdb mkfs.c lfs.c lfs_cksum.c -o $@
 
 test: test.c lfs.c lfs_cksum.c
 	gcc -ggdb test.c lfs.c lfs_cksum.c -o $@
