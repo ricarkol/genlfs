@@ -1299,7 +1299,7 @@ struct _ifile {
 	char		*data;
 	struct _cleanerinfo32 *cleanerinfo;
 	char		*segusage;
-	IFILE32		*ifiles;
+	char		*ifiles;
 };
 
 /* In memory representation of the LFS */

@@ -14,7 +14,7 @@
 #include "config.h"
 #include "lfs.h"
 
-static next_inum = 4;
+static int next_inum = 4;
 
 int get_next_inum(void) { return ++next_inum; }
 

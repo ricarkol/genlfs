@@ -102,7 +102,7 @@ u_int32_t cksum(void *str, size_t len);
 #define IFILE_MAP_SZ	16
 #endif
 
-#define MAX_INODES ((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32))
+#define MAX_INODES (((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32)) - IFILE_MAP_SZ)
 
 /*
  * calculate the maximum file size allowed with the specified block shift.
@@ -191,6 +191,13 @@ static const struct dlfs dlfs32_default = {
 
 #define SEGUSE_GET(_fs, _i)                                                    \
 	((SEGUSE *)&(_fs->ifile.segusage[SEGUSE_IDX(_fs->lfs.dlfs_sepb, _i)]))
+
+#define IFILE_IDX(_ifpb, _i)                                                   \
+	((_i / _ifpb) * DFL_LFSBLOCK +                                         \
+	 sizeof(IFILE32) * (_i - (((_i / _ifpb) * _ifpb))))
+
+#define IFILE_GET(_fs, _i)                                                     \
+	((IFILE32 *)&(_fs->ifile.ifiles[IFILE_IDX(_fs->lfs.dlfs_ifpb, _i)]))
 
 /* Add a block into the data checksum */
 void segment_add_datasum(struct segment *seg, char *block, uint32_t size) {
@@ -420,7 +427,6 @@ void write_empty_root_dir(struct fs *fs) {
 	dir_done(&dir);
 
 	assert(fs->lfs.dlfs_offset == 3);
-	printf("%d\n", dir.curr);
 	assert(dir.curr == LFS_DIRBLKSIZ);
 	write_file(fs, &dir.data[0], dir.curr, ULFS_ROOTINO,
 			LFS_IFDIR | 0755, 2, 0);
@@ -448,17 +454,21 @@ void init_ifile(struct fs *fs) {
 	ifile->cleanerinfo = (struct _cleanerinfo32 *)ifile->data;
 	ifile->segusage =
 	    (char *)(ifile->data + (lfs->dlfs_cleansz * DFL_LFSBLOCK));
-	ifile->ifiles = (IFILE32 *)((uint64_t)ifile->segusage +
+	ifile->ifiles = (char *)((uint64_t)ifile->segusage +
 				    (lfs->dlfs_segtabsz * DFL_LFSBLOCK));
 
 	memset(&ifile->ifiles[0], 0, sizeof(IFILE32));
 
 	for (i = 1; i < MAX_INODES; i++) {
-		ifile->ifiles[i].if_version = 1;
-		ifile->ifiles[i].if_daddr = LFS_UNUSED_DADDR;
-		ifile->ifiles[i].if_nextfree = i + 1;
-		ifile->ifiles[i].if_atime_sec = 0;
-		ifile->ifiles[i].if_atime_nsec = 0;
+		int idx = IFILE_IDX(lfs->dlfs_ifpb, i);
+		IFILE32 *ifile_i = IFILE_GET(fs, i);
+		assert((IFILE32 *)&ifile->ifiles[idx] == ifile_i);
+		assert(idx < (IFILE_MAP_SZ * DFL_LFSBLOCK));
+		ifile_i->if_version = 1;
+		ifile_i->if_daddr = LFS_UNUSED_DADDR;
+		ifile_i->if_nextfree = i + 1;
+		ifile_i->if_atime_sec = 0;
+		ifile_i->if_atime_nsec = 0;
 	}
 
 	ifile->cleanerinfo->free_head = 1;
@@ -730,8 +740,12 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 			FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset)) ==
 	       sizeof(inode));
 	assert(inumber < MAX_INODES);
-	ifile->ifiles[inumber].if_daddr = fs->lfs.dlfs_offset;
-	ifile->ifiles[inumber].if_nextfree = 0;
+	printf("inumber=%d block=%ld %d %d\n",
+		inumber, (inumber*sizeof(IFILE32))/8192, fs->lfs.dlfs_offset, FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset));
+	
+	IFILE32 *ifile_i = IFILE_GET(fs, inumber);
+	ifile_i->if_daddr = fs->lfs.dlfs_offset;
+	ifile_i->if_nextfree = 0;
 	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_ninos += 1;
@@ -787,8 +801,9 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_ninos += 1;
 
-	ifile->ifiles[inumber].if_daddr = fs->lfs.dlfs_offset;
-	ifile->ifiles[inumber].if_nextfree = 0;
+	IFILE32 *ifile_i = IFILE_GET(fs, inumber);
+	ifile_i->if_daddr = fs->lfs.dlfs_offset;
+	ifile_i->if_nextfree = 0;
 	inode_lbn = fs->lfs.dlfs_offset;
 	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
 
@@ -857,8 +872,10 @@ void write_ifile(struct fs *fs) {
 
 	/* point to ifile inode */
 	fs->lfs.dlfs_idaddr = fs->lfs.dlfs_offset;
-	ifile->ifiles[LFS_IFILE_INUM].if_daddr = fs->lfs.dlfs_idaddr;
-	ifile->ifiles[LFS_IFILE_INUM].if_nextfree = 0;
+
+	IFILE32 *ifile_i = IFILE_GET(fs, LFS_IFILE_INUM);
+	ifile_i->if_daddr = fs->lfs.dlfs_idaddr;
+	ifile_i->if_nextfree = 0;
 
 	/* IFILE/CLEANER INFO */
 	ifile->cleanerinfo->clean = fs->lfs.dlfs_nclean;
