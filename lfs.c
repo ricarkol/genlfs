@@ -500,7 +500,8 @@ void init_ifile(struct fs *fs) {
 	assert(IFILE_OFF(lfs->dlfs_ifpb, 4 * lfs->dlfs_ifpb) == 4 * DFL_LFSBLOCK);
 	assert((IFILE32 *)&ifile->ifiles[4 * DFL_LFSBLOCK] ==
 			IFILE_GET(fs, 4 * lfs->dlfs_ifpb));
-	assert(IFILE_GET(fs, 4 * lfs->dlfs_ifpb)->if_version == 1);
+	if (IFILE_MAP_SZ > 4)
+		assert(IFILE_GET(fs, 4 * lfs->dlfs_ifpb)->if_version == 1);
 
 	ifile->cleanerinfo->free_head = 1;
 	ifile->cleanerinfo->free_tail = MAX_INODES - 1;
@@ -804,7 +805,6 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	off_t inode_lbn, indirect_lbn;
 	int indirect_blk[DFL_LFSBLOCK / sizeof(int)];
 	int inumber = LFS_IFILE_INUM;
-	SEGUSE *segusage;
 
 	add_finfo_inode(fs, nblocks * DFL_LFSBLOCK, inumber);
 	assert(fs->lfs.dlfs_inopb == 1);
@@ -836,8 +836,6 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	    .di_modrev = 0};
 
 	ifile->cleanerinfo->free_head++;
-	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
-	segusage->su_ninos += 1;
 
 	IFILE32 *ifile_i = IFILE_GET(fs, inumber);
 	ifile_i->if_daddr = fs->lfs.dlfs_offset;
@@ -846,8 +844,6 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
 
 	/* This block is accounted for the inode. */
-	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
-	segusage->su_nbytes += DFL_LFSBLOCK;
 	advance_log(fs, ifile, 1);
 
 	for (i = 0; i < nblocks; i++) {
@@ -906,6 +902,9 @@ void write_ifile(struct fs *fs) {
 		while (fs->seg.seg_number == curr)
 			advance_log_by_one(fs, ifile);
 	}
+
+	segusage = SEGUSE_GET(fs, curr_seg);
+	segusage->su_ninos += 1;
 
 	/* Every segment has a counter of used bytes (su_nbytes), which
 	 * is written as part of the ifile. The ifile itself uses some bytes,
