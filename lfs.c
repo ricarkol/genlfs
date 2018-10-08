@@ -102,7 +102,7 @@ u_int32_t cksum(void *str, size_t len);
 #define IFILE_MAP_SZ	16
 #endif
 
-#define MAX_INODES (((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32)) - IFILE_MAP_SZ)
+#define MAX_INODES (((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32)) - IFILE_MAP_SZ + 1)
 
 /*
  * calculate the maximum file size allowed with the specified block shift.
