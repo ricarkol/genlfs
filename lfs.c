@@ -875,8 +875,12 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	if (nblocks > 0) {
 		printf("ifile: indirect %d\n", fs->lfs.dlfs_offset);
 		uint32_t _nblocks = MIN(nblocks, NPTR32);
-		inode.di_ib[0] =
-		    write_single_indirect(fs, ifile, indirect_blk, _nblocks);
+		assert(_nblocks <= NPTR32);
+		inode.di_ib[0] = fs->lfs.dlfs_offset;
+		assert(pwrite64(fs->fd, indirect_blk, DFL_LFSBLOCK,
+			FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset)) == DFL_LFSBLOCK);
+		segment_add_datasum(&fs->seg, (char *)indirect_blk, DFL_LFSBLOCK);
+		advance_log(fs, ifile, 1);
 		nblocks -= _nblocks;
 	}
 	assert(nblocks == 0);
