@@ -778,8 +778,6 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 			FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset)) ==
 	       sizeof(inode));
 	assert(inumber < MAX_INODES);
-	printf("inumber=%d block=%ld %d %d\n",
-		inumber, (inumber*sizeof(IFILE32))/8192, fs->lfs.dlfs_offset, FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset));
 	
 	IFILE32 *ifile_i = IFILE_GET(fs, inumber);
 	/* we should be writing this for the first time */
@@ -853,7 +851,6 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	advance_log(fs, ifile, 1);
 
 	for (i = 0; i < nblocks; i++) {
-		printf("ifile: %d/%d %d\n", i, nblocks, fs->lfs.dlfs_offset);
 		char *curr_blk = ifile->data + (DFL_LFSBLOCK * i);
 		segment_add_datasum(&fs->seg, curr_blk, DFL_LFSBLOCK);
 		assert(pwrite64(fs->fd, curr_blk, DFL_LFSBLOCK,
@@ -873,7 +870,6 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	nblocks -= MIN(nblocks, ULFS_NDADDR);
 
 	if (nblocks > 0) {
-		printf("ifile: indirect %d\n", fs->lfs.dlfs_offset);
 		uint32_t _nblocks = MIN(nblocks, NPTR32);
 		assert(_nblocks <= NPTR32);
 		inode.di_ib[0] = fs->lfs.dlfs_offset;
@@ -885,7 +881,6 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	}
 	assert(nblocks == 0);
 
-	printf("ifile: inode %d\n", fs->lfs.dlfs_offset);
 	/* Write the inode (and indirect block) */
 	assert(pwrite64(fs->fd, &inode, sizeof(inode),
 			FSBLOCK_TO_BYTES(inode_lbn)) == sizeof(inode));
@@ -903,7 +898,6 @@ void write_ifile(struct fs *fs) {
 	avail_blocks -= fs->lfs.dlfs_offset - fs->lfs.dlfs_curseg;
 	assert(avail_blocks > 0 && avail_blocks < fs->lfs.dlfs_fsbpseg);
 
-	printf("ifile: seg:%d off:%d\n", fs->seg.seg_number, fs->lfs.dlfs_offset);
 	/* Having the ifile span two segments is kind of tricky. So,
 	 * if we can't fit it into the current segment, just advance
 	 * to the next one. */
@@ -912,8 +906,6 @@ void write_ifile(struct fs *fs) {
 		while (fs->seg.seg_number == curr)
 			advance_log_by_one(fs, ifile);
 	}
-
-	printf("ifile: seg:%d off:%d\n", fs->seg.seg_number, fs->lfs.dlfs_offset);
 
 	/* Every segment has a counter of used bytes (su_nbytes), which
 	 * is written as part of the ifile. The ifile itself uses some bytes,
@@ -952,7 +944,6 @@ void write_ifile(struct fs *fs) {
 
 	/* IFILE/INODE MAP */
 	write_ifile_content(fs, ifile, nblocks);
-	printf("ifile: seg:%d off:%d\n", fs->seg.seg_number, fs->lfs.dlfs_offset);
 }
 
 void init_lfs(struct fs *fs, uint64_t nbytes) {
