@@ -99,7 +99,7 @@ u_int32_t cksum(void *str, size_t len);
 /* size args */
 #define NSUPERBLOCKS LFS_MAXNUMSB
 #ifndef IFILE_MAP_SZ
-#define IFILE_MAP_SZ	16
+#define IFILE_MAP_SZ	32
 #endif
 
 #define MAX_INODES (((IFILE_MAP_SZ * DFL_LFSBLOCK) / sizeof(IFILE32)) - IFILE_MAP_SZ + 1)
@@ -185,19 +185,19 @@ static const struct dlfs dlfs32_default = {
     .dlfs_pad = {0},
     .dlfs_cksum = 0};
 
-#define SEGUSE_IDX(_sepb, _i)                                                  \
-	((_i / _sepb) * DFL_LFSBLOCK +                                         \
-	 sizeof(SEGUSE) * (_i - (((_i / _sepb) * _sepb))))
+#define SEGUSE_OFF(_sepb, _i)                                                  \
+	(((_i) / _sepb) * DFL_LFSBLOCK +                                       \
+	 sizeof(SEGUSE) * ((_i) - ((((_i) / _sepb) * _sepb))))
 
 #define SEGUSE_GET(_fs, _i)                                                    \
-	((SEGUSE *)&(_fs->ifile.segusage[SEGUSE_IDX(_fs->lfs.dlfs_sepb, _i)]))
+	((SEGUSE *)&(_fs->ifile.segusage[SEGUSE_OFF(_fs->lfs.dlfs_sepb, (_i))]))
 
-#define IFILE_IDX(_ifpb, _i)                                                   \
-	((_i / _ifpb) * DFL_LFSBLOCK +                                         \
-	 sizeof(IFILE32) * (_i - (((_i / _ifpb) * _ifpb))))
+#define IFILE_OFF(_ifpb, _i)                                                   \
+	(((_i) / _ifpb) * DFL_LFSBLOCK +                                       \
+	 sizeof(IFILE32) * ((_i) - ((((_i) / _ifpb) * _ifpb))))
 
 #define IFILE_GET(_fs, _i)                                                     \
-	((IFILE32 *)&(_fs->ifile.ifiles[IFILE_IDX(_fs->lfs.dlfs_ifpb, _i)]))
+	((IFILE32 *)&(_fs->ifile.ifiles[IFILE_OFF(_fs->lfs.dlfs_ifpb, (_i))]))
 
 /* Add a block into the data checksum */
 void segment_add_datasum(struct segment *seg, char *block, uint32_t size) {
@@ -211,7 +211,6 @@ void segment_add_datasum(struct segment *seg, char *block, uint32_t size) {
 }
 
 int write_superblock(struct fs *fs) {
-	struct segsum32 *segsum = fs->seg.segsum;
 	uint32_t i;
 
 	for (i = 0; i < NSUPERBLOCKS; i++) {
@@ -289,8 +288,8 @@ void start_segment(struct fs *fs, struct _ifile *ifile) {
 	segusage->su_nsums = 1;
 
 	/* Make a hole for the segment summary. */
+	/* TODO: make sure there is no superblock here. */
 	_advance_log(fs, fs->lfs.dlfs_sumsize / DFL_LFSBLOCK);
-	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	fs->lfs.dlfs_dmeta++;
 
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
@@ -331,11 +330,13 @@ void advance_log_by_one(struct fs *fs, struct _ifile *ifile) {
 
 /* Advance the log by nr FS blocks. */
 void advance_log(struct fs *fs, struct _ifile *ifile, uint32_t nr) {
-	uint32_t i;
+	uint32_t i, prev;
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
+	prev = fs->lfs.dlfs_offset;
 	for (i = 0; i < nr; i++)
 		advance_log_by_one(fs, ifile);
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
+	assert(fs->lfs.dlfs_offset > prev);
 }
 
 int dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
@@ -460,24 +461,35 @@ void init_ifile(struct fs *fs) {
 	memset(&ifile->ifiles[0], 0, sizeof(IFILE32));
 
 	for (i = 1; i < MAX_INODES; i++) {
-		int idx = IFILE_IDX(lfs->dlfs_ifpb, i);
+		int off = IFILE_OFF(lfs->dlfs_ifpb, i);
 		IFILE32 *ifile_i = IFILE_GET(fs, i);
-		assert((IFILE32 *)&ifile->ifiles[idx] == ifile_i);
-		assert(idx < (IFILE_MAP_SZ * DFL_LFSBLOCK));
+		assert((IFILE32 *)&ifile->ifiles[off] == ifile_i);
+		assert(off < (IFILE_MAP_SZ * DFL_LFSBLOCK));
 		ifile_i->if_version = 1;
 		ifile_i->if_daddr = LFS_UNUSED_DADDR;
 		ifile_i->if_nextfree = i + 1;
 		ifile_i->if_atime_sec = 0;
 		ifile_i->if_atime_nsec = 0;
 	}
+	assert(IFILE_OFF(lfs->dlfs_ifpb, lfs->dlfs_ifpb) == DFL_LFSBLOCK);
+	assert(IFILE_OFF(lfs->dlfs_ifpb, lfs->dlfs_ifpb + 1) ==
+			DFL_LFSBLOCK + sizeof(IFILE32));
+	assert((IFILE32 *)&ifile->ifiles[DFL_LFSBLOCK] ==
+			IFILE_GET(fs, lfs->dlfs_ifpb));
+	assert(IFILE_OFF(lfs->dlfs_ifpb, 2 * lfs->dlfs_ifpb) == 2 * DFL_LFSBLOCK);
+	assert(IFILE_OFF(lfs->dlfs_ifpb, 3 * lfs->dlfs_ifpb) == 3 * DFL_LFSBLOCK);
+	assert(IFILE_OFF(lfs->dlfs_ifpb, 4 * lfs->dlfs_ifpb) == 4 * DFL_LFSBLOCK);
+	assert((IFILE32 *)&ifile->ifiles[4 * DFL_LFSBLOCK] ==
+			IFILE_GET(fs, 4 * lfs->dlfs_ifpb));
+	assert(IFILE_GET(fs, 4 * lfs->dlfs_ifpb)->if_version == 1);
 
 	ifile->cleanerinfo->free_head = 1;
 	ifile->cleanerinfo->free_tail = MAX_INODES - 1;
 
 	for (i = 0; i < fs->nsegs; i++) {
-		int idx = SEGUSE_IDX(lfs->dlfs_sepb, i);
-		assert((SEGUSE *)&ifile->segusage[idx] == SEGUSE_GET(fs, i));
-		memcpy(&ifile->segusage[idx], &empty_segusage,
+		int off = SEGUSE_OFF(lfs->dlfs_sepb, i);
+		assert((SEGUSE *)&ifile->segusage[off] == SEGUSE_GET(fs, i));
+		memcpy(&ifile->segusage[off], &empty_segusage,
 		       sizeof(empty_segusage));
 	}
 }
@@ -659,6 +671,13 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	assert(indirect_blks);
 	SEGUSE *segusage;
 
+	/* TODO: add proper fix for zero bytes files */
+	if (size == 0) {
+		size = 8192;
+		nblocks = 1;
+		data = malloc(8192);
+	}
+
 	/*
 	 * TODO: We can't enable this at the moment, because the segment size
 	 * is limited to 1 block, and that's not enough for large files.
@@ -744,6 +763,8 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 		inumber, (inumber*sizeof(IFILE32))/8192, fs->lfs.dlfs_offset, FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset));
 	
 	IFILE32 *ifile_i = IFILE_GET(fs, inumber);
+	/* we should be writing this for the first time */
+	assert(ifile_i->if_daddr == LFS_UNUSED_DADDR);
 	ifile_i->if_daddr = fs->lfs.dlfs_offset;
 	ifile_i->if_nextfree = 0;
 	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
@@ -850,7 +871,7 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 }
 
 void write_ifile(struct fs *fs) {
-	int nblocks = fs->lfs.dlfs_cleansz + fs->lfs.dlfs_segtabsz + 1;
+	int nblocks = fs->lfs.dlfs_cleansz + fs->lfs.dlfs_segtabsz + IFILE_MAP_SZ;
 	struct _ifile *ifile = &fs->ifile;
 	SEGUSE *segusage;
 	int avail_blocks;

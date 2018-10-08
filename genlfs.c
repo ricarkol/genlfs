@@ -43,7 +43,6 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 
 	while ((dirent = readdir(d)) != NULL) {
 		struct stat sb;
-		int next_inum = get_next_inum();
 
 		lstat(dirent->d_name, &sb);
 
@@ -59,6 +58,7 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 				break;
 			if (strcmp(dirent->d_name, "..") == 0)
 				break;
+			int next_inum = get_next_inum();
 			assert(dir_add_entry(dir, dirent->d_name, next_inum,
 				      LFS_DT_DIR) == 0);
 			printf("directory (%d): %s\n", next_inum, dirent->d_name);
@@ -76,6 +76,7 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 			int fd = openat(AT_FDCWD, dirent->d_name, O_RDONLY);
 			assert(fd > 0);
 			void *addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+			int next_inum = get_next_inum();
 			printf("regular file (%d): %s\n", next_inum, dirent->d_name);
 			assert(addr);
 			write_file(fs, (char *)addr, sb.st_size, next_inum,
