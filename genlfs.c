@@ -58,6 +58,12 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 				break;
 			if (strcmp(dirent->d_name, "..") == 0)
 				break;
+			if (strcmp(dirent->d_name, "dev") == 0)
+				break;
+			if (strcmp(dirent->d_name, "sys") == 0)
+				break;
+			if (strcmp(dirent->d_name, "proc") == 0)
+				break;
 			int next_inum = get_next_inum();
 			assert(dir_add_entry(dir, dirent->d_name, next_inum,
 				      LFS_DT_DIR) == 0);
@@ -111,7 +117,7 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 
 int main(int argc, char **argv) {
 	struct fs fs;
-	uint64_t nbytes = 1024 * 1024 * 1024 * 40ULL;
+	uint64_t nbytes = 1024 * 1024 * 1024 * 4ULL;
 
 	if (argc != 3) {
 		errx(1, "Usage: %s <directory> <image>", argv[0]);
