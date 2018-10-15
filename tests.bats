@@ -155,6 +155,24 @@ function create_tree() {
 	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
 }
 
+@test "genlfs: large file" {
+	skip "Takes too much time"
+
+	create_tree
+	rm -rf test_dir
+	mkdir -p test_dir
+	seq 1 10000000 > test_dir/large
+
+	run ./genlfs test_dir test.lfs
+	echo "$output"
+	[ "$status" -eq 0 ]
+
+	run ./ukvm-bin.seccomp --disk=test.lfs blk-rumprun.seccomp '{"cmdline":"blk /test/large","blk":{"source":"etfs","path":"/dev/ld0a","fstype":"blk","mountpoint":"/test"}}'
+	echo "$output"
+	[[ "$output" == *"10000000"* ]]
+	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
+}
+
 @test "genlfs: empty file" {
 	create_tree
 	rm -rf test_dir
