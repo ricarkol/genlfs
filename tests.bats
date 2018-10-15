@@ -155,6 +155,24 @@ function create_tree() {
 	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
 }
 
+@test "genlfs: empty file" {
+	create_tree
+	rm -rf test_dir
+	mkdir -p test_dir
+	touch test_dir/empty
+
+	run ./genlfs test_dir test.lfs
+	echo "$output"
+	[ "$status" -eq 0 ]
+
+	run ./ukvm-bin.seccomp --disk=test.lfs blk-rumprun.seccomp '{"cmdline":"blk /test","blk":{"source":"etfs","path":"/dev/ld0a","fstype":"blk","mountpoint":"/test"}}'
+	echo "$output"
+	[[ "$output" == *"."* ]]
+	[[ "$output" == *".."* ]]
+	[[ "$output" == *"empty"* ]]
+	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
+}
+
 @test "genlfs: check tree" {
 	create_tree
 	run ./genlfs test_dir test.lfs

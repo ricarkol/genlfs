@@ -684,19 +684,12 @@ int write_triple_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
 void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 		int nlink, int flags) {
 	struct _ifile *ifile = &fs->ifile;
-	uint32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
+	int32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
 	uint32_t i, j;
 	int *blk_ptrs;
 	int *indirect_blks = malloc(num_iblocks(nblocks) * DFL_LFSBLOCK);
 	assert(indirect_blks);
 	SEGUSE *segusage;
-
-	/* TODO: add proper fix for zero bytes files */
-	if (size == 0) {
-		size = 8192;
-		nblocks = 1;
-		data = malloc(8192);
-	}
 
 	/*
 	 * TODO: We can't enable this at the moment, because the segment size
@@ -748,6 +741,7 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	}
 
 	nblocks -= MIN(nblocks, ULFS_NDADDR);
+	assert(nblocks >= 0);
 	blk_ptrs = indirect_blks;
 
 	if (nblocks > 0) {
