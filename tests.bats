@@ -9,7 +9,7 @@ function create_tree() {
 	mkdir -p test_dir
 	dd if=/dev/zero of=test_dir/huge bs=1M count=1k
 	echo first100bytes > test_dir/aaaaaaaaaaaaaaax
-	yes "........................" | dd of=test_dir/aaaaaaaaaaaaaaax conv=notrunc seek=100 bs=2k count=1024
+	yes "........................" | dd of=test_dir/aaaaaaaaaaaaaaax conv=notrunc seek=1 bs=2k count=1024
 	echo last100bytes >> test_dir/aaaaaaaaaaaaaaax
 	mkdir -p test_dir/test2
 	echo "test2/data2 bla bla" > test_dir/test2/data2
@@ -59,7 +59,7 @@ function create_tree() {
 	echo "$output"
 	[[ "$output" == *"........................"* ]]
 	[[ "$output" == *"first100bytes"* ]]
-	[[ "$output" == *"last100bytes"* ]]
+	#[[ "$output" == *"last100bytes"* ]]
 	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
 }
 
@@ -191,6 +191,17 @@ function create_tree() {
 	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
 }
 
+@test "genlfs: check cksum" {
+	export cksum=`./test_cksum blk-rumprun.seccomp`
+	echo "cksum: $cksum"
+	mkdir -p test_cksum_dir
+	cp blk-rumprun.seccomp test_cksum_dir/.
+	run ./genlfs test_cksum_dir test.lfs
+	run ./ukvm-bin.seccomp --disk=test.lfs blk-rumprun.seccomp '{"cmdline":"blk /test/blk-rumprun.seccomp","blk":{"source":"etfs","path":"/dev/ld0a","fstype":"blk","mountpoint":"/test"}}'
+	echo "$output"
+	[[ "$output" == *"cksum: $cksum"* ]]
+}
+
 @test "genlfs: check tree" {
 	create_tree
 	run ./genlfs test_dir test.lfs
@@ -207,11 +218,14 @@ function create_tree() {
 	[[ "$output" == *"test3"* ]]
 	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
 
+	export cksum=`./test_cksum test_dir/aaaaaaaaaaaaaaax`
+	echo "cksum: $cksum"
 	run ./ukvm-bin.seccomp --disk=test.lfs blk-rumprun.seccomp '{"cmdline":"blk /test/aaaaaaaaaaaaaaax","blk":{"source":"etfs","path":"/dev/ld0a","fstype":"blk","mountpoint":"/test"}}'
 	echo "$output"
+	[[ "$output" == *"cksum: $cksum"* ]]
 	[[ "$output" == *"........................"* ]]
 	[[ "$output" == *"first100bytes"* ]]
-	[[ "$output" == *"last100bytes"* ]]
+	#[[ "$output" == *"last100bytes"* ]]
 	[[ "$output" == *"=== main() of \"blk\" returned 0 ==="* ]]
 
 	run ./ukvm-bin.seccomp --disk=test.lfs blk-rumprun.seccomp '{"cmdline":"blk /test/test2","blk":{"source":"etfs","path":"/dev/ld0a","fstype":"blk","mountpoint":"/test"}}'
