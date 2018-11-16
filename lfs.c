@@ -687,7 +687,7 @@ int write_triple_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
 void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 		int nlink, int flags) {
 	struct _ifile *ifile = &fs->ifile;
-	int32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
+	int32_t nblocks = DIV_UP(size, DFL_LFSBLOCK);
 	uint32_t i, j;
 	int *blk_ptrs;
 	int *indirect_blks = malloc(num_iblocks(nblocks) * DFL_LFSBLOCK);
@@ -727,27 +727,40 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 
 	ifile->cleanerinfo->free_head++;
 
-	off_t off;
-	for (off = 0, i = 0; off < size; off += DFL_LFSBLOCK, i++) {
+	off_t pending;
+	for (pending = size, i = 0; pending > 0;) {
 		assert(i < nblocks);
-		char *curr_blk = data + (DFL_LFSBLOCK * i);
-		segment_add_datasum(&fs->seg, curr_blk, DFL_LFSBLOCK);
+		off_t avail_blocks, curr_nblocks, len;
 
-		/* extra care for last block */
-		off_t len = i + 1 == nblocks ? size - off : DFL_LFSBLOCK;
-		assert(len <= DFL_LFSBLOCK && len > 0);
+		char *curr_blk = data + (DFL_LFSBLOCK * i);
+		avail_blocks = fs->lfs.dlfs_fsbpseg;
+		avail_blocks -= fs->lfs.dlfs_offset - fs->lfs.dlfs_curseg;
+		assert(avail_blocks > 0 && avail_blocks < fs->lfs.dlfs_fsbpseg);
+
+		len = MIN(pending, avail_blocks * DFL_LFSBLOCK);
+		curr_nblocks = DIV_UP(len, DFL_LFSBLOCK);
+		assert(len <= avail_blocks * DFL_LFSBLOCK && len > 0);
+		assert(curr_nblocks <= avail_blocks && curr_nblocks > 0);
+
+		segment_add_datasum(&fs->seg, curr_blk, len);
 
 		write_log(fs, curr_blk, len,
 			FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset),
 			mode & LFS_IFREG ? 1 : 0);
-		if (i < ULFS_NDADDR) {
-			inode.di_db[i] = fs->lfs.dlfs_offset;
-		} else {
-			indirect_blks[i - ULFS_NDADDR] = fs->lfs.dlfs_offset;
+
+		for (j = 0; j < curr_nblocks; j++, i++) {
+			if (i < ULFS_NDADDR) {
+				inode.di_db[i] = fs->lfs.dlfs_offset + j;
+			} else {
+				indirect_blks[i - ULFS_NDADDR] = fs->lfs.dlfs_offset + j;
+			}
 		}
+
 		segusage = SEGUSE_GET(fs, fs->seg.seg_number);
-		segusage->su_nbytes += DFL_LFSBLOCK;
-		advance_log(fs, ifile, 1);
+		segusage->su_nbytes += curr_nblocks * DFL_LFSBLOCK;
+		advance_log(fs, ifile, curr_nblocks);
+
+		pending -= len;
 	}
 
 	nblocks -= MIN(nblocks, ULFS_NDADDR);
