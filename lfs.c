@@ -916,7 +916,7 @@ void write_ifile(struct fs *fs) {
 			advance_log_by_one(fs, ifile);
 	}
 
-	segusage = SEGUSE_GET(fs, curr_seg);
+	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_ninos += 1;
 
 	/* Every segment has a counter of used bytes (su_nbytes), which
