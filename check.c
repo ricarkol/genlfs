@@ -109,15 +109,11 @@ int main(int argc, char **argv)
 {
 	struct dlfs lfs;
 	int fd;
-	uint32_t avail_segs;
-	off_t off;
-	struct segment seg;
 	unsigned char summary_block[DFL_LFSBLOCK];
 	char block[DFL_LFSBLOCK];
 	struct lfs_dirheader32 *dir;
 	struct lfs32_dinode *dinode;
 	struct _cleanerinfo32 *cleanerinfo;
-	struct segusage *segusage;
 	int i;
 	int sboffs[] = {1, 13056, 26112, 39168, 52224, 65280, 78336, 91392,
 			104448, 117504};
@@ -217,11 +213,13 @@ int main(int argc, char **argv)
 	assert(pread(fd, summary_block, lfs.dlfs_sumsize,
 		SECTOR_TO_BYTES(32)) == lfs.dlfs_sumsize);
 
-	assert(((struct segsum32 *)summary_block)->ss_magic == 398689);
-	assert(((struct segsum32 *)summary_block)->ss_next == 128);
-	assert(((struct segsum32 *)summary_block)->ss_nfinfo == 2);
-	assert(((struct segsum32 *)summary_block)->ss_ninos == 2);
-	assert(((struct segsum32 *)summary_block)->ss_serial == 1);
+	struct segsum32 *ss = (struct segsum32 *)summary_block;
+
+	assert(ss->ss_magic == 398689);
+	assert(ss->ss_next == 128);
+	assert(ss->ss_nfinfo == 2);
+	assert(ss->ss_ninos == 2);
+	assert(ss->ss_serial == 1);
 	struct finfo32 *finfo1 = (struct finfo32 *)(summary_block +
 		sizeof(struct segsum32));
 	assert(finfo1->fi_nblocks == 1);
@@ -258,9 +256,6 @@ int main(int argc, char **argv)
 	assert(*(summary_block + sizeof(struct segsum32) +
 		sizeof(struct finfo32) + sizeof(int) +
 		sizeof(struct finfo32) + 6*sizeof(int)) == 0);
-	size_t end = sizeof(struct segsum32) +
-		sizeof(struct finfo32) + sizeof(int) +
-		sizeof(struct finfo32) + 5*sizeof(int);
 
 	/*
 	bwrite(blkno=48)
@@ -429,7 +424,7 @@ int main(int argc, char **argv)
 	assert(segusages[0].su_nsums == 1);
 	assert(segusages[0].su_ninos == 2);
 	assert(segusages[0].su_nbytes == 65536);
-	assert(segusages[0].su_flags == SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK);
+	assert(segusages[0].su_flags == (SEGUSE_ACTIVE|SEGUSE_DIRTY|SEGUSE_SUPERBLOCK));
 	assert(segusages[0].su_lastmod == 0);
 	for (i = 1; i < 341; i++) {
 		int found = 0, j;

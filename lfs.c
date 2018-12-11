@@ -339,7 +339,6 @@ int start_segment(struct fs *fs, struct _ifile *ifile) {
 }
 
 int write_segment_summary(struct fs *fs) {
-	char *datap, *dp;
 	size_t sumstart = offsetof(SEGSUM32, ss_datasum);
 	struct segsum32 *ssp;
 	ssp = (struct segsum32 *)fs->seg.segsum;
@@ -480,8 +479,10 @@ void dir_done(struct directory *dir) {
  * Writes one block for the dir data, and one block for the inode.
  */
 int write_empty_root_dir(struct fs *fs) {
-	struct directory dir = {0};
+	struct directory dir;
 	int ret;
+
+	memset(&dir, 0, sizeof(struct directory));
 
 	ret = dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
 	if (ret != 0)
@@ -591,8 +592,6 @@ void init_sboffs(struct fs *fs, struct _ifile *ifile) {
 void add_finfo_inode(struct fs *fs, uint64_t size, uint32_t inumber) {
 	struct segment *seg = &fs->seg;
 	uint32_t nblocks = (size + DFL_LFSBLOCK - 1) / DFL_LFSBLOCK;
-	uint32_t lastlength =
-	    size % DFL_LFSBLOCK == 0 ? DFL_LFSBLOCK : size % DFL_LFSBLOCK;
 	struct finfo32 *finfo = (struct finfo32 *)seg->fip;
 	uint32_t i;
 
@@ -642,7 +641,7 @@ uint32_t num_iblocks(uint32_t nblocks) {
  * Writes the block pointers and return the offset of the parent.
  */
 int write_single_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
-			uint32_t nblocks, uint32_t *off) {
+			uint32_t nblocks, int32_t *off) {
 	SEGUSE *segusage;
 	int ret;
 
@@ -669,7 +668,7 @@ int write_single_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
  * Writes the block pointers and return the offset of the parent.
  */
 int write_double_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
-			  uint32_t nblocks, uint32_t *off) {
+			  uint32_t nblocks, int32_t *off) {
 	int iblks[NPTR32];
 	uint32_t i;
 	assert(nblocks <= NPTR32 * NPTR32);
@@ -711,7 +710,7 @@ int write_double_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
  * Writes the block pointers and return the offset of the parent.
  */
 int write_triple_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
-			  uint32_t nblocks, uint32_t *off) {
+			  uint32_t nblocks, int32_t *off) {
 	int iblks[NPTR32];
 	uint32_t i;
 	int ret;
@@ -899,9 +898,8 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
  */
 int write_ifile_content(struct fs *fs, struct _ifile *ifile,
 			 uint32_t nblocks) {
-	int32_t first_data_bno;
-	uint32_t i, bno;
-	off_t inode_lbn, indirect_lbn;
+	uint32_t i;
+	off_t inode_lbn;
 	int indirect_blk[DFL_LFSBLOCK / sizeof(int)];
 	int inumber = LFS_IFILE_INUM;
 	int ret;

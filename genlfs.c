@@ -138,4 +138,6 @@ int main(int argc, char **argv) {
 
 	finish_lfs(&fs);
 	close(fs.fd);
+
+	return 0;
 }

@@ -90,8 +90,6 @@
 
 int main(int argc, char **argv) {
 	struct fs fs;
-	uint32_t avail_segs;
-	off_t off;
 	uint64_t nbytes;
 
 	if (argc < 2 || argc > 3) {

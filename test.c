@@ -81,17 +81,16 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "lfs.h"
 #include "config.h"
 
 #define FSIZE ((DFL_LFSBLOCK * 130))
 
-int test_no_space(char *log)
+void test_no_space(char *log)
 {
 	struct fs fs;
-	uint32_t avail_segs;
-	off_t off;
 	uint64_t nbytes;
 
 	fs.fd = open(log, O_CREAT | O_RDWR, DEFFILEMODE);
@@ -106,7 +105,7 @@ int test_no_space(char *log)
 	nbytes = 2 * 1024 * 1024ull;
 	assert(init_lfs(&fs, nbytes) == 0);
 
-	struct directory dir = {0};
+	struct directory dir = {{0}};
 	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "bigfile", 3, LFS_DT_REG);
@@ -122,11 +121,9 @@ int test_no_space(char *log)
 	close(fs.fd);
 }
 
-int test_create(char *log)
+void test_create(char *log)
 {
 	struct fs fs;
-	uint32_t avail_segs;
-	off_t off;
 	uint64_t nbytes;
 
 	nbytes = (1024 * 1024 * 1 * 1024ull);
@@ -136,7 +133,8 @@ int test_create(char *log)
 
 	init_lfs(&fs, nbytes);
 
-	struct directory dir = {0};
+	struct directory dir;
+	memset(&dir, 0, sizeof(struct directory));
 	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir, "aaaaaaaaaaaaaaax", 3, LFS_DT_REG);
@@ -153,7 +151,7 @@ int test_create(char *log)
 	sprintf(&block[FSIZE - 100], "last100bytes");
 	write_file(&fs, block, FSIZE, 3, LFS_IFREG | 0777, 1, 0);
 
-	struct directory dir2 = {0};
+	struct directory dir2 = {{0}};
 	dir_add_entry(&dir2, ".", 4, LFS_DT_DIR);
 	dir_add_entry(&dir2, "..", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir2, "data2", 9, LFS_DT_REG);
@@ -164,7 +162,7 @@ int test_create(char *log)
 	sprintf(block, "/test2/data2 bla bla\n");
 	write_file(&fs, block, strlen(block), 9, LFS_IFREG | 0777, 1, 0);
 
-	struct directory dir3 = {0};
+	struct directory dir3 = {{0}};
 	dir_add_entry(&dir3, ".", 5, LFS_DT_DIR);
 	dir_add_entry(&dir3, "..", ULFS_ROOTINO, LFS_DT_DIR);
 	dir_add_entry(&dir3, "test4", 7, LFS_DT_DIR);
@@ -176,7 +174,7 @@ int test_create(char *log)
 	sprintf(block, "/test3/data3 bla bla\n");
 	write_file(&fs, block, strlen(block), 6, LFS_IFREG | 0777, 1, 0);
 
-	struct directory dir4 = {0};
+	struct directory dir4 = {{0}};
 	dir_add_entry(&dir4, ".", 7, LFS_DT_DIR);
 	dir_add_entry(&dir4, "..", 5, LFS_DT_DIR);
 	dir_add_entry(&dir4, "data4", 8, LFS_DT_REG);
@@ -189,8 +187,6 @@ int test_create(char *log)
 
 	finish_lfs(&fs);
 	close(fs.fd);
-
-	return 0;
 }
 
 int main(int argc, char **argv)
@@ -204,4 +200,6 @@ int main(int argc, char **argv)
 	/* XXX: should be last: some of our tests in tests.bats are using the
 	 * FS created by this test. */
 	test_create(argv[1]);
+
+	return 0;
 }
