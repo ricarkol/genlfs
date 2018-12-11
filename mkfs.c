@@ -108,13 +108,12 @@ int main(int argc, char **argv) {
 	fs.fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fs.fd != 0);
 
-	init_lfs(&fs, nbytes);
+	assert(init_lfs(&fs, nbytes) == 0);
 
 	write_empty_root_dir(&fs);
 
-	write_ifile(&fs);
-	write_superblock(&fs);
-	write_segment_summary(&fs);
+	finish_lfs(&fs);
+	close(fs.fd);
 
 	return 0;
 }

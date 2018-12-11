@@ -202,8 +202,16 @@ static const struct dlfs dlfs32_default = {
 #define IFILE_GET(_fs, _i)                                                     \
 	((IFILE32 *)&(_fs->ifile.ifiles[IFILE_OFF(_fs->lfs.dlfs_ifpb, (_i))]))
 
-void write_log(struct fs *fs, void *data, uint64_t len, off_t lfs_off, int remap) {
-	assert(pwrite64(fs->fd, data, len, lfs_off) == len);
+int write_log(struct fs *fs, void *data, uint64_t len, off_t lfs_off, int remap) {
+	int ret;
+
+	ret = pwrite64(fs->fd, data, len, lfs_off);
+	if (ret == len)
+		return 0;
+	else if (ret == -1)
+		return errno;
+	else
+		return -1;
 }
 
 /* Add a block into the data checksum */
@@ -219,11 +227,14 @@ void segment_add_datasum(struct segment *seg, char *block, uint32_t size) {
 
 int write_superblock(struct fs *fs) {
 	uint32_t i;
+	int ret;
 
 	for (i = 0; i < NSUPERBLOCKS; i++) {
 		fs->lfs.dlfs_cksum = lfs_sb_cksum32(&fs->lfs);
-		write_log(fs, &fs->lfs, sizeof(fs->lfs),
+		ret = write_log(fs, &fs->lfs, sizeof(fs->lfs),
 			FSBLOCK_TO_BYTES(fs->lfs.dlfs_sboffs[i]), 0);
+		if (ret != 0)
+			return ret;
 		fs->lfs.dlfs_serial++;
 	}
 	return 0;
@@ -234,7 +245,7 @@ int _advance_log(struct fs *fs, uint32_t nr) {
 	struct dlfs *lfs = &fs->lfs;
 
 	if (lfs->dlfs_avail <= nr)
-		return 1;
+		return ENOSPC;
 
 	/* Should not be used to make space for a superblock */
 	lfs->dlfs_offset += nr;
@@ -252,9 +263,10 @@ int _advance_log(struct fs *fs, uint32_t nr) {
  * should be at the beginning of the segment already.  The resulting offset
  * would be after the segment summary, and a superblock (if any).
  */
-void start_segment(struct fs *fs, struct _ifile *ifile) {
+int start_segment(struct fs *fs, struct _ifile *ifile) {
 	struct segsum32 *segsum = fs->seg.segsum;
 	SEGUSE *segusage;
+	int ret;
 
 	assert(fs->lfs.dlfs_offset == 1 ||
 		(fs->lfs.dlfs_offset % fs->lfs.dlfs_fsbpseg == 0));
@@ -277,7 +289,9 @@ void start_segment(struct fs *fs, struct _ifile *ifile) {
 		/* The first block is for the superblock of the segment (if
 		 * any) */
 		segment_add_datasum(&fs->seg, (char *)&fs->lfs, DFL_LFSBLOCK);
-		assert(_advance_log(fs, 1) == 0);
+		ret = _advance_log(fs, 1);
+		if (ret != 0)
+			return ret;
 	}
 
 	fs->seg.fs = (struct lfs *)&fs->lfs;
@@ -308,7 +322,9 @@ void start_segment(struct fs *fs, struct _ifile *ifile) {
 
 	/* Make a hole for the segment summary. */
 	/* TODO: make sure there is no superblock here. */
-	_advance_log(fs, fs->lfs.dlfs_sumsize / DFL_LFSBLOCK);
+	ret = _advance_log(fs, fs->lfs.dlfs_sumsize / DFL_LFSBLOCK);
+	if (ret != 0)
+		return ret;
 	assert(fs->seg.disk_bno < fs->lfs.dlfs_offset);
 	fs->lfs.dlfs_dmeta++;
 
@@ -319,9 +335,10 @@ void start_segment(struct fs *fs, struct _ifile *ifile) {
 		assert(((fs->lfs.dlfs_offset - 1) % fs->lfs.dlfs_fsbpseg == 0) ||
 		       ((fs->lfs.dlfs_offset - 2) % fs->lfs.dlfs_fsbpseg == 0));
 
+	return 0;
 }
 
-void write_segment_summary(struct fs *fs) {
+int write_segment_summary(struct fs *fs) {
 	char *datap, *dp;
 	size_t sumstart = offsetof(SEGSUM32, ss_datasum);
 	struct segsum32 *ssp;
@@ -333,34 +350,49 @@ void write_segment_summary(struct fs *fs) {
 	ssp->ss_sumsum = cksum((char *)fs->seg.segsum + sumstart,
 			       fs->lfs.dlfs_sumsize - sumstart);
 
-	write_log(fs, ssp, DFL_LFSBLOCK, FSBLOCK_TO_BYTES(fs->seg.disk_bno), 0);
+	return write_log(fs, ssp, DFL_LFSBLOCK, FSBLOCK_TO_BYTES(fs->seg.disk_bno), 0);
 }
 
 /* Advance the log by nr FS blocks. */
-void advance_log_by_one(struct fs *fs, struct _ifile *ifile) {
+int advance_log_by_one(struct fs *fs, struct _ifile *ifile) {
+	int ret;
+
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 	if ((fs->lfs.dlfs_offset - fs->lfs.dlfs_curseg + 1) <
 	    fs->lfs.dlfs_fsbpseg) {
-		assert(_advance_log(fs, 1) == 0);
+		ret = _advance_log(fs, 1);
+		if (ret != 0)
+			return ret;
 	} else {
 		assert(((fs->lfs.dlfs_offset + 1) % fs->lfs.dlfs_fsbpseg) == 0);
 		write_segment_summary(fs);
-		assert(_advance_log(fs, 1) == 0);
+		ret = _advance_log(fs, 1);
+		if (ret != 0)
+			return ret;
 		assert(fs->lfs.dlfs_offset % fs->lfs.dlfs_fsbpseg == 0);
 		start_segment(fs, ifile);
 	}
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
+
+	return 0;
 }
 
 /* Advance the log by nr FS blocks. */
-void advance_log(struct fs *fs, struct _ifile *ifile, uint32_t nr) {
+int advance_log(struct fs *fs, struct _ifile *ifile, uint32_t nr) {
 	uint32_t i, prev;
+	int ret;
+
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 	prev = fs->lfs.dlfs_offset;
-	for (i = 0; i < nr; i++)
-		advance_log_by_one(fs, ifile);
+	for (i = 0; i < nr; i++) {
+		ret = advance_log_by_one(fs, ifile);
+		if (ret != 0)
+			return ret;
+	}
 	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
 	assert(fs->lfs.dlfs_offset > prev);
+
+	return 0;
 }
 
 int dir_add_entry(struct directory *dir, char *name, int inumber, int type) {
@@ -444,7 +476,7 @@ void dir_done(struct directory *dir) {
 /*
  * Writes one block for the dir data, and one block for the inode.
  */
-void write_empty_root_dir(struct fs *fs) {
+int write_empty_root_dir(struct fs *fs) {
 	struct directory dir = {0};
 
 	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
@@ -453,7 +485,7 @@ void write_empty_root_dir(struct fs *fs) {
 
 	assert(fs->lfs.dlfs_offset == 3);
 	assert(dir.curr == LFS_DIRBLKSIZ);
-	write_file(fs, &dir.data[0], dir.curr, ULFS_ROOTINO,
+	return write_file(fs, &dir.data[0], dir.curr, ULFS_ROOTINO,
 			LFS_IFDIR | 0755, 2, 0);
 }
 
@@ -603,15 +635,19 @@ int write_single_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
 			  uint32_t nblocks) {
 	uint32_t off = fs->lfs.dlfs_offset;
 	SEGUSE *segusage;
+	int ret;
 
 	assert(nblocks <= NPTR32);
 
-	write_log(fs, blk_ptrs, DFL_LFSBLOCK, FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset), 0);
+	ret = write_log(fs, blk_ptrs, DFL_LFSBLOCK, FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset), 0);
+	if (ret != 0)
+		return ret;
 
 	segment_add_datasum(&fs->seg, (char *)blk_ptrs, DFL_LFSBLOCK);
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_nbytes += DFL_LFSBLOCK;
-	advance_log(fs, ifile, 1);
+	// XXX: take care of failing advance_log
+	assert(advance_log(fs, ifile, 1) == 0);
 
 	return off;
 }
@@ -645,7 +681,8 @@ int write_double_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
 	segment_add_datasum(&fs->seg, (char *)iblks, DFL_LFSBLOCK);
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_nbytes += DFL_LFSBLOCK;
-	advance_log(fs, ifile, 1);
+	// XXX: take care of failing advance_log
+	assert(advance_log(fs, ifile, 1) == 0);
 
 	return off;
 }
@@ -679,18 +716,21 @@ int write_triple_indirect(struct fs *fs, struct _ifile *ifile, int *blk_ptrs,
 	segment_add_datasum(&fs->seg, (char *)iblks, DFL_LFSBLOCK);
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_nbytes += DFL_LFSBLOCK;
-	advance_log(fs, ifile, 1);
+	// XXX: take care of failing advance_log
+	assert(advance_log(fs, ifile, 1) == 0);
 
 	return off;
 }
 
-void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
+int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 		int nlink, int flags) {
 	struct _ifile *ifile = &fs->ifile;
 	int32_t nblocks = DIV_UP(size, DFL_LFSBLOCK);
 	uint32_t i, j;
 	int *blk_ptrs;
 	int *indirect_blks = malloc(num_iblocks(nblocks) * DFL_LFSBLOCK);
+	int ret;
+
 	assert(indirect_blks);
 	SEGUSE *segusage;
 
@@ -758,7 +798,9 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 
 		segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 		segusage->su_nbytes += curr_nblocks * DFL_LFSBLOCK;
-		advance_log(fs, ifile, curr_nblocks);
+		ret = advance_log(fs, ifile, curr_nblocks);
+		if (ret != 0)
+			return ret;
 
 		pending -= len;
 	}
@@ -805,22 +847,27 @@ void write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
 	segusage->su_ninos += 1;
 	segusage->su_nbytes += DFL_LFSBLOCK;
-	advance_log(fs, ifile, 1);
+	ret = advance_log(fs, ifile, 1);
+	if (ret != 0)
+		return ret;
 
 	free(indirect_blks);
+
+	return 0;
 }
 
 /*
  * The difference with write_file is that for an ifile, the inode
  * is written first.
  */
-void write_ifile_content(struct fs *fs, struct _ifile *ifile,
+int write_ifile_content(struct fs *fs, struct _ifile *ifile,
 			 uint32_t nblocks) {
 	int32_t first_data_bno;
 	uint32_t i, bno;
 	off_t inode_lbn, indirect_lbn;
 	int indirect_blk[DFL_LFSBLOCK / sizeof(int)];
 	int inumber = LFS_IFILE_INUM;
+	int ret;
 
 	add_finfo_inode(fs, nblocks * DFL_LFSBLOCK, inumber);
 	assert(fs->lfs.dlfs_inopb == 1);
@@ -860,7 +907,9 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	segment_add_datasum(&fs->seg, (char *)&inode, DFL_LFSBLOCK);
 
 	/* This block is accounted for the inode. */
-	advance_log(fs, ifile, 1);
+	ret = advance_log(fs, ifile, 1);
+	if (ret != 0)
+		return ret;
 
 	for (i = 0; i < nblocks; i++) {
 		char *curr_blk = ifile->data + (DFL_LFSBLOCK * i);
@@ -875,7 +924,9 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 		/* Adding segusage[fs->seg.seg_number].su_nbytes here has no
 		effect,
 		as the segusage block is being written here as well.*/
-		advance_log(fs, ifile, 1);
+		ret = advance_log(fs, ifile, 1);
+		if (ret != 0)
+			return ret;
 	}
 
 	nblocks -= MIN(nblocks, ULFS_NDADDR);
@@ -893,15 +944,18 @@ void write_ifile_content(struct fs *fs, struct _ifile *ifile,
 
 	/* Write the inode (and indirect block) */
 	write_log(fs, &inode, sizeof(inode), FSBLOCK_TO_BYTES(inode_lbn), 0);
+
+	return 0;
 }
 
-void write_ifile(struct fs *fs) {
+int write_ifile(struct fs *fs) {
 	int nblocks = fs->lfs.dlfs_cleansz + fs->lfs.dlfs_segtabsz + IFILE_MAP_SZ;
 	int all_blocks;
 	struct _ifile *ifile = &fs->ifile;
 	SEGUSE *segusage;
 	int avail_blocks;
 	int curr_seg;
+	int ret;
 
 	avail_blocks = fs->lfs.dlfs_fsbpseg;
 	avail_blocks -= fs->lfs.dlfs_offset - fs->lfs.dlfs_curseg;
@@ -912,8 +966,11 @@ void write_ifile(struct fs *fs) {
 	 * to the next one. */
 	if (nblocks > avail_blocks) {
 		uint32_t curr = fs->seg.seg_number;
-		while (fs->seg.seg_number == curr)
-			advance_log_by_one(fs, ifile);
+		while (fs->seg.seg_number == curr) {
+			ret = advance_log_by_one(fs, ifile);
+			if (ret != 0)
+				return ret;
+		}
 	}
 
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
@@ -958,10 +1015,11 @@ void write_ifile(struct fs *fs) {
 	write_ifile_content(fs, ifile, nblocks);
 }
 
-void init_lfs(struct fs *fs, uint64_t nbytes) {
+int init_lfs(struct fs *fs, uint64_t nbytes) {
 	uint64_t resvseg;
 	struct dlfs *lfs = &fs->lfs;
 	uint64_t nsegs;
+	int ret;
 
 	fs->lfs = dlfs32_default;
 
@@ -994,7 +1052,9 @@ void init_lfs(struct fs *fs, uint64_t nbytes) {
 	int nblocks = fs->lfs.dlfs_cleansz + fs->lfs.dlfs_segtabsz + 1 + 2;
 	assert(nblocks < fs->lfs.dlfs_fsbpseg);
 
-	assert(lfs->dlfs_lastseg <= SEGS_TO_FSBLOCKS(nsegs));
+	if (lfs->dlfs_lastseg >= SEGS_TO_FSBLOCKS(nsegs))
+		return ENOSPC;
+
 	lfs->dlfs_nclean = nsegs;
 	lfs->dlfs_minfreeseg = (nsegs / DFL_MIN_FREE_SEGS);
 	lfs->dlfs_resvseg = resvseg;
@@ -1020,7 +1080,21 @@ void init_lfs(struct fs *fs, uint64_t nbytes) {
 	fs->lfs.dlfs_curseg = (-1) * (DFL_LFSSEG / DFL_LFSBLOCK);
 	fs->seg.seg_number = -1;
 	/* The first block is left empty */
-	assert(_advance_log(fs, 1) == 0);
+	ret = _advance_log(fs, 1);
+	if (ret != 0)
+		return ret;
+
 	assert(fs->lfs.dlfs_offset == 1);
 	start_segment(fs, ifile);
+
+	return 0;
+}
+
+int finish_lfs(struct fs *fs)
+{
+	write_ifile(fs);
+	write_superblock(fs);
+	write_segment_summary(fs);
+
+	return 0;
 }

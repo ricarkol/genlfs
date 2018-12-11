@@ -156,7 +156,7 @@ function create_tree() {
 }
 
 @test "genlfs: large file" {
-	skip "Takes too much time"
+	#skip "Takes too much time"
 
 	create_tree
 	rm -rf test_dir

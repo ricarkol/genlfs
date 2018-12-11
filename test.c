@@ -87,25 +87,51 @@
 
 #define FSIZE ((DFL_LFSBLOCK * 130))
 
-int main(int argc, char **argv)
+int test_no_space(char *log)
 {
 	struct fs fs;
 	uint32_t avail_segs;
 	off_t off;
 	uint64_t nbytes;
 
-	if (argc < 2 || argc > 3) {
-		errx(1, "Usage: %s <file/device> [bytes]", argv[0]);
-	}
+	fs.fd = open(log, O_CREAT | O_RDWR, DEFFILEMODE);
+	assert(fs.fd != 0);
 
-	if (argc == 2) {
-		nbytes = (1024 * 1024 * 1 * 1024ull);
-	} else {
-		assert(argc == 3);
-		nbytes = atoll(argv[2]);
-	}
+	nbytes = 1024ull;
+	assert(init_lfs(&fs, nbytes) == ENOSPC);
 
-	fs.fd = open(argv[1], O_CREAT | O_RDWR, DEFFILEMODE);
+	nbytes = 0;
+	assert(init_lfs(&fs, nbytes) == ENOSPC);
+
+	nbytes = 2 * 1024 * 1024ull;
+	assert(init_lfs(&fs, nbytes) == 0);
+
+	struct directory dir = {0};
+	dir_add_entry(&dir, ".", ULFS_ROOTINO, LFS_DT_DIR);
+	dir_add_entry(&dir, "..", ULFS_ROOTINO, LFS_DT_DIR);
+	dir_add_entry(&dir, "bigfile", 3, LFS_DT_REG);
+	dir_done(&dir);
+	write_file(&fs, &dir.data[0], LFS_DIRBLKSIZ, ULFS_ROOTINO,
+		LFS_IFDIR | 0755, 2, 0);
+
+	uint64_t size = 1024 * 1024ull;
+	char *largefile = malloc(size);
+	assert(largefile);
+	memset(largefile, '.', size);
+	assert(write_file(&fs, largefile, size, 3, LFS_IFREG | 0777, 1, 0) == ENOSPC);
+	close(fs.fd);
+}
+
+int test_create(char *log)
+{
+	struct fs fs;
+	uint32_t avail_segs;
+	off_t off;
+	uint64_t nbytes;
+
+	nbytes = (1024 * 1024 * 1 * 1024ull);
+
+	fs.fd = open(log, O_CREAT | O_RDWR, DEFFILEMODE);
 	assert(fs.fd != 0);
 
 	init_lfs(&fs, nbytes);
@@ -161,9 +187,21 @@ int main(int argc, char **argv)
 	sprintf(block, "/test3/test4/data4 bla bla\n");
 	write_file(&fs, block, strlen(block), 8, LFS_IFREG | 0777, 1, 0);
 
-	write_ifile(&fs);
-	write_superblock(&fs);
-	write_segment_summary(&fs);
+	finish_lfs(&fs);
+	close(fs.fd);
 
 	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc < 2) {
+		errx(1, "Usage: %s <file/device>", argv[0]);
+	}
+
+	test_no_space("small.lfs");
+
+	/* XXX: should be last: some of our tests in tests.bats are using the
+	 * FS created by this test. */
+	test_create(argv[1]);
 }

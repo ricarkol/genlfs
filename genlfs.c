@@ -136,8 +136,6 @@ int main(int argc, char **argv) {
 
 	walk(&fs, ULFS_ROOTINO, ULFS_ROOTINO);
 
-	write_ifile(&fs);
-	write_superblock(&fs);
-	write_segment_summary(&fs);
+	finish_lfs(&fs);
 	close(fs.fd);
 }
