@@ -24,5 +24,8 @@ test_cksum: test_cksum.c
 tests: all
 	bats tests.bats
 
+install: genlfs
+	install -m 775 -D genlfs /usr/bin/genlfs
+
 clean:
 	rm -f mkfs test check genlfs mkfs_small
