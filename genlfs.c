@@ -79,6 +79,8 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 			printf("symlink\n");
 			break;
 		case S_IFREG: {
+			if (sb.st_size == 0)
+				continue;
 			int fd = openat(AT_FDCWD, dirent->d_name, O_RDONLY);
 			assert(fd > 0);
 			void *addr = NULL;
@@ -87,9 +89,9 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 				assert(addr != MAP_FAILED);
 			}
 			int next_inum = get_next_inum();
-			printf("regular file (%d): %s\n", next_inum, dirent->d_name);
+			printf("regular file (%d): %s %d\n", next_inum, dirent->d_name, sb.st_size);
 			write_file(fs, (char *)addr, sb.st_size, next_inum,
-					   LFS_IFREG | 0777, 1, 0);
+					   LFS_IFREG | 0444, 1, 0);
 			munmap(addr, sb.st_size);
 			close(fd);
 
