@@ -1323,6 +1323,11 @@ struct directory {
 	int 	curr, prev;
 };
 
+/*
+ * If any of these operations fail, the FS can be considered corrupted.
+ * init_lfs should be called again with a bigger size (most common 
+ * cause of failure).
+ */
 int init_lfs(struct fs *fs, uint64_t nbytes);
 int write_empty_root_dir(struct fs *fs);
 int write_ifile(struct fs *fs);
