@@ -55,9 +55,9 @@
  * than the segment size.
  */
 #define	LFS_MINSEGSIZE		(64 * 1024)
-#define	DFL_LFSSEG		(1024 * 1024)
+#define	DFL_LFSSEG		(1024 * 1024 * 1)
 #define	DFL_LFSSEG_SHIFT	20
-#define	DFL_LFSSEG_MASK		0xFFFFF
+#define	DFL_LFSSEG_MASK		((1 << DFL_LFSSEG_SHIFT) - 1)//0xFFFFF
 
 #define	LFS_MINBLOCKSIZE	512
 #define	DFL_LFSBLOCK		8192

@@ -158,8 +158,8 @@ static const struct dlfs dlfs32_default = {
     .dlfs_ifpb = DFL_LFSBLOCK / sizeof(IFILE32),
     .dlfs_sepb = DFL_LFSBLOCK / sizeof(SEGUSE),
     .dlfs_nindir = DFL_LFSBLOCK / sizeof(int32_t),
-    .dlfs_nspf = 16,
-    .dlfs_cleansz = 1,
+    .dlfs_nspf = DFL_LFSBLOCK / 512,
+    .dlfs_cleansz = 2,
     .dlfs_segmask = DFL_LFSSEG_MASK,
     .dlfs_segshift = DFL_LFSSEG_SHIFT,
     .dlfs_bshift = DFL_LFSBLOCK_SHIFT,
@@ -169,7 +169,7 @@ static const struct dlfs dlfs32_default = {
     .dlfs_ffmask = DFL_LFS_FFMASK,
     .dlfs_fbmask = DFL_LFS_FBMASK,
     .dlfs_blktodb = LOG2(DFL_LFSBLOCK / DEV_BSIZE),
-    .dlfs_sushift = 0,
+    .dlfs_sushift = 1,
     .dlfs_maxsymlinklen = LFS32_MAXSYMLINKLEN,
     .dlfs_sboffs = {0},
     .dlfs_fsmnt = {0},
@@ -181,7 +181,7 @@ static const struct dlfs dlfs32_default = {
     .dlfs_s0addr = 0,
     .dlfs_tstamp = 0,
     .dlfs_inodefmt = LFS_44INODEFMT,
-    .dlfs_interleave = 0,
+    .dlfs_interleave = 1,
     .dlfs_ident = 0,
     .dlfs_fsbtodb = LOG2(DFL_LFSBLOCK / DEV_BSIZE),
 
@@ -552,8 +552,8 @@ void init_ifile(struct fs *fs) {
 	if (IFILE_MAP_SZ > 4)
 		assert(IFILE_GET(fs, 4 * lfs->dlfs_ifpb)->if_version == 1);
 
-	ifile->cleanerinfo->free_head = 0;
-	ifile->cleanerinfo->free_tail = 0;
+	ifile->cleanerinfo->free_head = 124;
+	ifile->cleanerinfo->free_tail = 125;
 
 	for (i = 0; i < fs->nsegs; i++) {
 		int off = SEGUSE_OFF(lfs->dlfs_sepb, i);
@@ -801,6 +801,8 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 
 	ifile->cleanerinfo->free_head++;
 
+	off_t pos1 = fs->lfs.dlfs_offset;
+
 	off_t pending;
 	for (pending = size, i = 0; pending > 0;) {
 		assert(i < nblocks);
@@ -880,6 +882,10 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 
 	assert(nblocks == 0);
 
+	off_t pos2 = fs->lfs.dlfs_offset;
+	inode.di_blocks = pos2 - pos1 + 1;
+	inode.di_blocks -= DIV_UP(inode.di_blocks, fs->lfs.dlfs_fsbpseg);
+
 	/* Write the inode */
 	ret = write_log(fs, &inode, sizeof(inode),
 			FSBLOCK_TO_BYTES(fs->lfs.dlfs_offset), 0);
@@ -900,6 +906,9 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	ret = advance_log(fs, ifile, 1);
 	if (ret != 0)
 		return ret;
+
+	if (inumber > fs->lfs.dlfs_freehd)
+		fs->lfs.dlfs_freehd = inumber;
 
 	free(indirect_blks);
 
@@ -947,6 +956,7 @@ int write_ifile_content(struct fs *fs, struct _ifile *ifile,
 	    .di_gid = 0,
 	    .di_modrev = 0};
 
+	off_t pos1 = fs->lfs.dlfs_offset;
 	ifile->cleanerinfo->free_head++;
 
 	IFILE32 *ifile_i = IFILE_GET(fs, inumber);
@@ -996,6 +1006,10 @@ int write_ifile_content(struct fs *fs, struct _ifile *ifile,
 		inode.di_blocks++;
 	}
 	assert(nblocks == 0);
+
+	off_t pos2 = fs->lfs.dlfs_offset;
+	inode.di_blocks = pos2 - pos1 + 1;
+	inode.di_blocks -= DIV_UP(inode.di_blocks, fs->lfs.dlfs_fsbpseg);
 
 	/* Write the inode (and indirect block) */
 	ret = write_log(fs, &inode, sizeof(inode), FSBLOCK_TO_BYTES(inode_lbn), 0);
@@ -1059,7 +1073,7 @@ int write_ifile(struct fs *fs) {
 	ifile->cleanerinfo->bfree = fs->lfs.dlfs_bfree;
 	ifile->cleanerinfo->avail = fs->lfs.dlfs_avail;
 	//assert(ifile->cleanerinfo->free_tail == (MAX_INODES - 1));
-	assert(fs->lfs.dlfs_cleansz == 1);
+	//assert(fs->lfs.dlfs_cleansz == 1);
 
 	/* IFILE/SEGUSE */
 	segusage = SEGUSE_GET(fs, fs->seg.seg_number);
@@ -1126,7 +1140,7 @@ int init_lfs(struct fs *fs, uint64_t nbytes) {
 	assert(DFL_LFSFRAG == DFL_LFSBLOCK);
 	assert(fs->lfs.dlfs_fsbpseg > (2 + 6 + 2));
 	assert(fs->lfs.dlfs_fsbpseg < MAX_BLOCKS_PER_SEG);
-	assert(fs->lfs.dlfs_cleansz == 1);
+	//assert(fs->lfs.dlfs_cleansz == 1);
 
 	struct _ifile *ifile = &fs->ifile;
 
