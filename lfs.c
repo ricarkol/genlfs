@@ -92,8 +92,6 @@
 #include "lfs.h"
 #include "lfs_accessors.h"
 
-//#define WRITE_SEGMENT_SUMMARY
-
 #define SF_IMMUTABLE 0x00020000 /* file may not be changed */
 
 #define HIGHEST_USED_INO ULFS_ROOTINO
@@ -328,7 +326,6 @@ int start_segment(struct fs *fs, struct _ifile *ifile) {
 	/* One seg. summary per segment. */
 	segusage->su_nsums = 1;
 
-#ifdef WRITE_SEGMENT_SUMMARY
 	/* Make a hole for the segment summary. */
 	/* TODO: make sure there is no superblock here. */
 	ret = _advance_log(fs, fs->lfs.dlfs_sumsize / DFL_LFSBLOCK);
@@ -342,7 +339,6 @@ int start_segment(struct fs *fs, struct _ifile *ifile) {
 	else
 		assert(((fs->lfs.dlfs_offset - 1) % fs->lfs.dlfs_fsbpseg == 0) ||
 		       ((fs->lfs.dlfs_offset - 2) % fs->lfs.dlfs_fsbpseg == 0));
-#endif
 	fs->lfs.dlfs_dmeta++;
 
 	return 0;
@@ -374,9 +370,7 @@ int advance_log_by_one(struct fs *fs, struct _ifile *ifile) {
 			return ret;
 	} else {
 		assert(((fs->lfs.dlfs_offset + 1) % fs->lfs.dlfs_fsbpseg) == 0);
-#ifdef WRITE_SEGMENT_SUMMARY
 		write_segment_summary(fs);
-#endif
 		ret = _advance_log(fs, 1);
 		if (ret != 0)
 			return ret;
@@ -812,8 +806,6 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 
 	ifile->cleanerinfo->free_head++;
 
-	off_t pos1 = fs->lfs.dlfs_offset;
-
 	off_t pending;
 	for (pending = size, i = 0; pending > 0;) {
 		assert(i < nblocks);
@@ -887,17 +879,6 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	}
 
 	assert(nblocks == 0);
-
-	off_t pos2 = fs->lfs.dlfs_offset;
-	inode.di_blocks = pos2 - pos1;
-	if (size == 0)
-		assert(inode.di_blocks == 0);
-
-#ifdef WRITE_SEGMENT_SUMMARY
-	// Have to decrement inode.di_blocks for all segment
-	// summaries.
-	//assert(0); // NOT IMPLEMENTED
-#endif
 
 	/* Write the inode */
 	ret = write_log(fs, &inode, sizeof(inode),
@@ -1184,11 +1165,9 @@ int finish_lfs(struct fs *fs)
 	if (ret != 0)
 		return ret;
 
-#ifdef WRITE_SEGMENT_SUMMARY
 	ret = write_segment_summary(fs);
 	if (ret != 0)
 		return ret;
-#endif
 
 	return 0;
 }
