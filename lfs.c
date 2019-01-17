@@ -217,6 +217,7 @@ int write_log(struct fs *fs, void *data, uint64_t len, off_t lfs_off, int remap)
 
 /* Add a block into the data checksum */
 void segment_add_datasum(struct segment *seg, char *block, uint32_t size) {
+	return;
 	uint32_t i;
 	for (i = 0; i < size; i += DFL_LFSBLOCK) {
 		/* The final checksum will be done with a sequence of the first
@@ -332,18 +333,11 @@ int start_segment(struct fs *fs, struct _ifile *ifile) {
 
 	/* Make a hole for the segment summary. */
 	/* TODO: make sure there is no superblock here. */
-	ret = _advance_log(fs, fs->lfs.dlfs_sumsize / DFL_LFSBLOCK);
-	if (ret != 0)
-		return ret;
-	assert(fs->seg.disk_bno < fs->lfs.dlfs_offset);
+	//ret = _advance_log(fs, fs->lfs.dlfs_sumsize / DFL_LFSBLOCK);
+	//if (ret != 0)
+	//	return ret;
+	//assert(fs->seg.disk_bno < fs->lfs.dlfs_offset);
 	fs->lfs.dlfs_dmeta++;
-
-	assert(fs->lfs.dlfs_offset >= fs->lfs.dlfs_curseg);
-	if (fs->lfs.dlfs_curseg == 0)
-		assert((fs->lfs.dlfs_offset - 3) % fs->lfs.dlfs_fsbpseg == 0);
-	else
-		assert(((fs->lfs.dlfs_offset - 1) % fs->lfs.dlfs_fsbpseg == 0) ||
-		       ((fs->lfs.dlfs_offset - 2) % fs->lfs.dlfs_fsbpseg == 0));
 
 	return 0;
 }
@@ -374,7 +368,7 @@ int advance_log_by_one(struct fs *fs, struct _ifile *ifile) {
 			return ret;
 	} else {
 		assert(((fs->lfs.dlfs_offset + 1) % fs->lfs.dlfs_fsbpseg) == 0);
-		write_segment_summary(fs);
+		//write_segment_summary(fs);
 		ret = _advance_log(fs, 1);
 		if (ret != 0)
 			return ret;
@@ -771,7 +765,8 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	int32_t nblocks = DIV_UP(size, DFL_LFSBLOCK);
 	uint32_t i, j;
 	int *blk_ptrs;
-	int *indirect_blks = malloc(num_iblocks(nblocks) * DFL_LFSBLOCK);
+	//int *indirect_blks = malloc(num_iblocks(nblocks) * DFL_LFSBLOCK);
+	int *indirect_blks = calloc(num_iblocks(nblocks), DFL_LFSBLOCK);
 	int ret;
 
 	assert(indirect_blks);
@@ -820,7 +815,7 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 		char *curr_blk = data + (DFL_LFSBLOCK * i);
 		avail_blocks = fs->lfs.dlfs_fsbpseg;
 		avail_blocks -= fs->lfs.dlfs_offset - fs->lfs.dlfs_curseg;
-		assert(avail_blocks > 0 && avail_blocks < fs->lfs.dlfs_fsbpseg);
+		//assert(avail_blocks > 0 && avail_blocks < fs->lfs.dlfs_fsbpseg);
 
 		len = MIN(pending, avail_blocks * DFL_LFSBLOCK);
 		curr_nblocks = DIV_UP(len, DFL_LFSBLOCK);
@@ -887,11 +882,13 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	assert(nblocks == 0);
 
 	off_t pos2 = fs->lfs.dlfs_offset;
-	inode.di_blocks = pos2 - pos1 + 1;
-	inode.di_blocks -= DIV_UP(inode.di_blocks, fs->lfs.dlfs_fsbpseg);
+	inode.di_blocks = pos2 - pos1;
+	//inode.di_blocks -= DIV_UP(inode.di_blocks, fs->lfs.dlfs_fsbpseg);
 
+/*
 	if (inumber == 2210) {
-		inode.di_blocks += 20;
+		printf("2210 %d\n", inode.di_blocks);
+		inode.di_blocks += 21;
 	}
 
 	if (inumber == 2172 ||
@@ -907,6 +904,7 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	//if (inumber == 835) {
 	//	inode.di_blocks += 9;
 	//}
+*/
 
 	/* Write the inode */
 	ret = write_log(fs, &inode, sizeof(inode),
@@ -1198,9 +1196,9 @@ int finish_lfs(struct fs *fs)
 	if (ret != 0)
 		return ret;
 
-	ret = write_segment_summary(fs);
-	if (ret != 0)
-		return ret;
+	//ret = write_segment_summary(fs);
+	//if (ret != 0)
+	//	return ret;
 
 	return 0;
 }
