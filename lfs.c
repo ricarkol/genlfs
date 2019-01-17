@@ -92,6 +92,8 @@
 #include "lfs.h"
 #include "lfs_accessors.h"
 
+//#define WRITE_SEGMENT_SUMMARY
+
 #define SF_IMMUTABLE 0x00020000 /* file may not be changed */
 
 #define HIGHEST_USED_INO ULFS_ROOTINO
@@ -894,7 +896,7 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 #ifdef WRITE_SEGMENT_SUMMARY
 	// Have to decrement inode.di_blocks for all segment
 	// summaries.
-	assert(0); // NOT IMPLEMENTED
+	//assert(0); // NOT IMPLEMENTED
 #endif
 
 	/* Write the inode */
@@ -1155,7 +1157,7 @@ int init_lfs(struct fs *fs, uint64_t nbytes) {
 
 	/* XXX: start_segment starts by advancing seg_number and dlfs_curseg */
 	fs->lfs.dlfs_curseg = (-1) * (DFL_LFSSEG / DFL_LFSBLOCK);
-	fs->lfs.dlfs_nextseg = (DFL_LFSSEG / DFL_LFSBLOCK);
+	fs->lfs.dlfs_nextseg = 0;
 	fs->seg.seg_number = -1;
 	/* The first block is left empty */
 	ret = _advance_log(fs, 1);
