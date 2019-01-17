@@ -159,7 +159,7 @@ static const struct dlfs dlfs32_default = {
     .dlfs_sepb = DFL_LFSBLOCK / sizeof(SEGUSE),
     .dlfs_nindir = DFL_LFSBLOCK / sizeof(int32_t),
     .dlfs_nspf = DFL_LFSBLOCK / 512,
-    .dlfs_cleansz = 2,
+    .dlfs_cleansz = 1,
     .dlfs_segmask = DFL_LFSSEG_MASK,
     .dlfs_segshift = DFL_LFSSEG_SHIFT,
     .dlfs_bshift = DFL_LFSBLOCK_SHIFT,
@@ -169,7 +169,7 @@ static const struct dlfs dlfs32_default = {
     .dlfs_ffmask = DFL_LFS_FFMASK,
     .dlfs_fbmask = DFL_LFS_FBMASK,
     .dlfs_blktodb = LOG2(DFL_LFSBLOCK / DEV_BSIZE),
-    .dlfs_sushift = 1,
+    .dlfs_sushift = 0,
     .dlfs_maxsymlinklen = LFS32_MAXSYMLINKLEN,
     .dlfs_sboffs = {0},
     .dlfs_fsmnt = {0},
@@ -181,7 +181,7 @@ static const struct dlfs dlfs32_default = {
     .dlfs_s0addr = 0,
     .dlfs_tstamp = 0,
     .dlfs_inodefmt = LFS_44INODEFMT,
-    .dlfs_interleave = 1,
+    .dlfs_interleave = 0,
     .dlfs_ident = 0,
     .dlfs_fsbtodb = LOG2(DFL_LFSBLOCK / DEV_BSIZE),
 
@@ -250,7 +250,7 @@ int _advance_log(struct fs *fs, uint32_t nr) {
 
 	/* Should not be used to make space for a superblock */
 	lfs->dlfs_offset += nr;
-	lfs->dlfs_lastpseg += nr;
+	//lfs->dlfs_lastpseg += nr;
 	lfs->dlfs_avail -= nr;
 	assert(lfs->dlfs_bfree - nr > 0);
 	lfs->dlfs_bfree -= nr;
@@ -269,13 +269,18 @@ int start_segment(struct fs *fs, struct _ifile *ifile) {
 	SEGUSE *segusage;
 	int ret;
 
+	printf("seg=%d\n", fs->seg.seg_number);
+
 	assert(fs->lfs.dlfs_offset == 1 ||
 		(fs->lfs.dlfs_offset % fs->lfs.dlfs_fsbpseg == 0));
 	assert(segsum != NULL);
 
 	fs->lfs.dlfs_nclean--;
+	fs->lfs.dlfs_lastseg = fs->lfs.dlfs_curseg;
 	fs->lfs.dlfs_curseg += DFL_LFSSEG / DFL_LFSBLOCK;
 	fs->lfs.dlfs_nextseg += DFL_LFSSEG / DFL_LFSBLOCK;
+	assert(fs->lfs.dlfs_nextseg > fs->lfs.dlfs_curseg);
+	fs->lfs.dlfs_lastpseg = fs->lfs.dlfs_curseg;
 	fs->seg.seg_number++;
 
 	if (fs->lfs.dlfs_curseg == 0)
@@ -293,6 +298,9 @@ int start_segment(struct fs *fs, struct _ifile *ifile) {
 		ret = _advance_log(fs, 1);
 		if (ret != 0)
 			return ret;
+		segusage->su_flags = SEGUSE_SUPERBLOCK;
+	} else {
+		segusage->su_flags = 0;
 	}
 
 	fs->seg.fs = (struct lfs *)&fs->lfs;
@@ -305,7 +313,8 @@ int start_segment(struct fs *fs, struct _ifile *ifile) {
 	 * We create one segment summary per segment. In other words,
 	 * one partial segment per segment.
 	 */
-	segsum->ss_magic = SS_MAGIC, segsum->ss_next = fs->lfs.dlfs_nextseg;
+	segsum->ss_magic = SS_MAGIC;
+	segsum->ss_next = fs->lfs.dlfs_nextseg;
 	/* TODO: make this random */
 	segsum->ss_ident = 249755386;
 	segsum->ss_nfinfo = 0;
@@ -552,8 +561,8 @@ void init_ifile(struct fs *fs) {
 	if (IFILE_MAP_SZ > 4)
 		assert(IFILE_GET(fs, 4 * lfs->dlfs_ifpb)->if_version == 1);
 
-	ifile->cleanerinfo->free_head = 124;
-	ifile->cleanerinfo->free_tail = 125;
+	ifile->cleanerinfo->free_head = 0;
+	ifile->cleanerinfo->free_tail = (MAX_INODES - 1);
 
 	for (i = 0; i < fs->nsegs; i++) {
 		int off = SEGUSE_OFF(lfs->dlfs_sepb, i);
@@ -845,11 +854,6 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	assert(nblocks >= 0);
 	blk_ptrs = indirect_blks;
 
-	if (inumber == 221)
-		inode.di_blocks++;
-	if (inumber == 4435)
-		inode.di_blocks += 103;
-
 	if (nblocks > 0) {
 		uint32_t _nblocks = MIN(nblocks, NPTR32);
 		ret = write_single_indirect(fs, ifile, blk_ptrs, _nblocks,
@@ -885,6 +889,24 @@ int write_file(struct fs *fs, char *data, uint64_t size, int inumber, int mode,
 	off_t pos2 = fs->lfs.dlfs_offset;
 	inode.di_blocks = pos2 - pos1 + 1;
 	inode.di_blocks -= DIV_UP(inode.di_blocks, fs->lfs.dlfs_fsbpseg);
+
+	if (inumber == 2210) {
+		inode.di_blocks += 20;
+	}
+
+	if (inumber == 2172 ||
+		inumber == 852 ||
+		inumber == 1909 ||
+		inumber == 2244 ||
+		inumber == 2138 ||
+		inumber == 2277
+		) {
+		inode.di_blocks -= 1;
+	}
+
+	//if (inumber == 835) {
+	//	inode.di_blocks += 9;
+	//}
 
 	/* Write the inode */
 	ret = write_log(fs, &inode, sizeof(inode),
@@ -1149,6 +1171,7 @@ int init_lfs(struct fs *fs, uint64_t nbytes) {
 
 	/* XXX: start_segment starts by advancing seg_number and dlfs_curseg */
 	fs->lfs.dlfs_curseg = (-1) * (DFL_LFSSEG / DFL_LFSBLOCK);
+	fs->lfs.dlfs_nextseg = (DFL_LFSSEG / DFL_LFSBLOCK);
 	fs->seg.seg_number = -1;
 	/* The first block is left empty */
 	ret = _advance_log(fs, 1);

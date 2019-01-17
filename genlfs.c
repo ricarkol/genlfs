@@ -91,7 +91,7 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 			int next_inum = get_next_inum();
 			printf("regular file (%d): %s %d\n", next_inum, dirent->d_name, sb.st_size);
 			write_file(fs, (char *)addr, sb.st_size, next_inum,
-					   LFS_IFREG | 0444, 1, 0);
+					   LFS_IFREG | 0777, 1, 0);
 			munmap(addr, sb.st_size);
 			close(fd);
 
@@ -122,7 +122,7 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 
 int main(int argc, char **argv) {
 	struct fs fs;
-	uint64_t nbytes = 1024 * 1024 * 1024 * 1ULL;
+	uint64_t nbytes = 1024 * 1024 * 1024 * 4ULL;
 
 	if (argc != 3) {
 		errx(1, "Usage: %s <directory> <image>", argv[0]);
