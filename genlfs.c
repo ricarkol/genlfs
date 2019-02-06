@@ -68,9 +68,11 @@ void walk(struct fs *fs, int parent_inum, int inum) {
 			assert(dir_add_entry(dir, dirent->d_name, next_inum,
 				      LFS_DT_DIR) == 0);
 			printf("directory (%d): %s\n", next_inum, dirent->d_name);
-			chdir(dirent->d_name);
+			if (chdir(dirent->d_name) != 0)
+				errx(1, "Failed to chdir: %s", dirent->d_name);
 			walk(fs, inum, next_inum);
-			chdir("..");
+			if (chdir("..") != 0)
+				errx(1, "Failed to chdir: ..");
 			break;
 		case S_IFIFO:
 			printf("FIFO/pipe\n");
