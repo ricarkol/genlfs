@@ -24,6 +24,12 @@ test_cksum: test_cksum.c
 tests: all
 	bats tests.bats
 
+# Used for tests. This needs something like: 'source rumprun/obj/config-path',
+# so we just added the binary to git (XXX: sorry).
+blk-rumprun.spt: blk.c
+	x86_64-rumprun-netbsd-gcc -o blk-rumprun blk.c
+	rumprun-bake solo5_spt blk-rumprun.spt blk-rumprun
+
 install: genlfs
 	install -m 775 -D genlfs /usr/bin/genlfs
 
