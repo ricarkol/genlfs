@@ -627,8 +627,10 @@ void add_finfo_inode(struct fs *fs, uint64_t size, uint32_t inumber) {
 }
 
 /* Calculate the number of indirect blocks for a file of size (size) */
-uint32_t num_iblocks(uint32_t nblocks) {
+uint32_t num_iblocks(int32_t nblocks) {
 	uint32_t res = 1;
+
+	/* this can be negative (it's fine) */
 	nblocks -= ULFS_NDADDR;
 
 	if (nblocks > (NPTR32 * NPTR32 * NPTR32))
