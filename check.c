@@ -177,7 +177,7 @@ int main(int argc, char **argv)
 	assert(lfs.dlfs_sumsize == 8192);
 	assert(lfs.dlfs_pflags == 1);
 	assert(lfs.dlfs_pflags == LFS_PF_CLEAN);
-	assert(lfs.dlfs_nclean = 1022);
+	assert(lfs.dlfs_nclean == 1022);
 	assert(lfs.dlfs_curseg == 0);
 	assert(lfs.dlfs_nextseg == 128);
 	assert(lfs.dlfs_idaddr == 5);
@@ -225,7 +225,7 @@ int main(int argc, char **argv)
 	assert(finfo1->fi_nblocks == 1);
 	assert(finfo1->fi_version == 1);
 	assert(finfo1->fi_ino == 2);
-	assert(finfo1->fi_lastlength = 8192);
+	assert(finfo1->fi_lastlength == 8192);
 	assert(*(summary_block + sizeof(struct segsum32) +
 		sizeof(struct finfo32) + 0*sizeof(int)) == 0);
 
@@ -234,7 +234,7 @@ int main(int argc, char **argv)
 	assert(finfo2->fi_nblocks == 5);
 	assert(finfo2->fi_version == 1);
 	assert(finfo2->fi_ino == 1);
-	assert(finfo2->fi_lastlength = 8192);
+	assert(finfo2->fi_lastlength == 8192);
 	assert(*(summary_block + sizeof(struct segsum32) +
 		sizeof(struct finfo32) + sizeof(int) +
 		sizeof(struct finfo32) + 0*sizeof(int)) == 0);
